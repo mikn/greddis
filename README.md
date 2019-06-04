@@ -1,44 +1,46 @@
 # Greddis
 
-*Note*: Currently Greddis only implements Del/Set/Get and is more fo a proof of concept than a fully implemented client.
+**Note**: Currently Greddis only implements Del/Set/Get and is more fo a proof of concept than a fully implemented client.
 
-Greddis focus is high performance and letting the user of the library control its allocations. Is built using learnings from database/sql/driver implementations in the standard package. Many implementations of these interfaces provide consistent and high performance through good use of buffer pools, as well as the connection pool implementation in the standard library itself.
+Greddis focus is high performance and letting the user of the library control its allocations. Is built using learnings from `database/sql/driver` implementations in the standard package. Many implementations of these interfaces provide consistent and high performance through good use of buffer pools, as well as the connection pool implementation in the standard library itself.
 
-Furthermore, it is compatible with any implementation of Valuer/Scanner from database/sql as long as they have a []byte implementation (as all data returned from Redis is []byte).
+Furthermore, it is compatible with any implementation of Valuer/Scanner from `database/sql` as long as they have a `[]byte` implementation (as all data returned from Redis is `[]byte`).
 
 ## How does it compare to Redigo/GoRedis?
 
 ### Efficient use of connections?
-Greddis: Yes
-Redigo: No
-GoRedis: Yes
 
-Redigo returns the underlying connection to execute your commands against (given Go's concurrency model, this gives you an insignificant performance benefit), whilst Greddis and GoRedis relies on a higher-level abstraction called "client" which is closer to the database/sql/driver abstraction. This means that between each interaction with the redis client the connection is being put back onto the pool. In high concurrency situations this is preferrable, as holding on to the connection across calls means your connection pool will grow faster than if you were to return it immediately (again see database/sql pool implementation).
+|Greddis | Yes |
+|Redigo  | No  |
+|GoRedis | Yes |
+
+**Redigo** returns the underlying connection to execute your commands against (given Go's concurrency model, this gives you an insignificant performance benefit), whilst **Greddis** and **GoRedis** relies on a higher-level abstraction called "client" which is closer to the `database/sql/driver` abstraction. This means that between each interaction with the redis client the connection is being put back onto the pool. In high concurrency situations this is preferrable, as holding on to the connection across calls means your connection pool will grow faster than if you were to return it immediately (again see `database/sql` pool implementation).
 
 ### Implements Redis Client protocol?
-Greddis: Yes
-Redigo: No
-GoRedis: No
 
-According to the Redis Serialization Protocol ([RESP Specification](https://redis.io/topics/protocol)), client libraries should use the RESP protocol to make requests as well as parse it for responses. The other option is to use their "human readable" Telnet protocol, which both GoRedis and Redigo implements. The problem is that this does not allow the Redis server to up-front malloc the entire memory section required to store the request before parsing it, and thus it needs to iteratively parse the return in chunks until it reaches the end. This explains why Greddis's performance on Set is barely related to the payload size.
+|Greddis | Yes |
+|Redigo  | No  |
+|GoRedis | No  |
+
+According to the Redis Serialization Protocol ([RESP Specification](https://redis.io/topics/protocol)), client libraries should use the RESP protocol to make requests as well as parse it for responses. The other option is to use their "human readable" Telnet protocol, which both **GoRedis** and **Redigo** implements. The problem is that this does not allow the Redis server to up-front malloc the entire memory section required to store the request before parsing it, and thus it needs to iteratively parse the return in chunks until it reaches the end. This explains why **Greddis's** performance on Set is barely related to the payload size.
 
 ### Pools request and response buffers to amortize allocation cost?
-Greddis: Yes
-Redigo: No
-GoRedis: No
+|Greddis | Yes |
+|Redigo  | No  |
+|GoRedis | No  |
 
-Neither Redigo nor GoRedis pools its buffers for reuse and allocates them on the stack per request. This becomes rather heavy on performance, especially as response sizes grow. You can see in the Get benchmarks for the three clients that GoRedis allocates the result no less than three times on the stack and Redigo allocates twice. (Reference, Get5000b benchmark)
+Neither **Redigo** nor **GoRedis** pools its buffers for reuse and allocates them on the stack per request. This becomes rather heavy on performance, especially as response sizes grow. You can see in the Get benchmarks for the three clients that **GoRedis** allocates the result no less than three times on the stack and **Redigo** allocates once. (Reference, *Get5000b* benchmark)
 
 ### Allows for zero-copy parsing of response?
-Greddis: Yes
-Redigo: No (but kind of)
-GoRedis: No
+|Greddis | Yes              |
+|Redigo  | No (but kind of) |
+|GoRedis | No               |
 
-The Result.Scan interface provided by the `database/sql` package is designed to allow you to do zero-alloc/zero-copy result parsing. GoRedis does not have a scan command at all. And Redigo, whilst having a Scan command, still does one copy per response before passing it to Scan. It also uses reflection on the type you send in to ensure it is of the same type as what's been parsed, rather than sending in the raw []byte slice for casting (what `database/sql` does). Greddis has opted to implement the `Result.Scan` interface more closely and only supports the `Result.Scan` interface for responses, allowing the user to control the casting and parsing depending on type sent in to `Result.Scan`.
+The `Result.Scan` interface provided by the `database/sql` package is designed to allow you to do zero-alloc/zero-copy result parsing. **GoRedis** does not have a scan command at all. And **Redigo**, whilst having a `Scan` command, still does one copy per response before passing it to `Scan`. It also uses reflection on the type you send in to ensure it is of the same type as what's been parsed, rather than sending in the raw `[]byte` slice for casting (what `database/sql` does). **Greddis** has opted to implement the `Result.Scan` interface more closely and only supports the `Result.Scan` interface for responses, allowing the user to control the casting and parsing depending on type sent in to `Result.Scan`.
 
 ## Benchmarks
 
-The benchmarks are run against a real redis server on localhost (network stack), no mock and no direct socket connection.
+The benchmarks are run against a real redis server on localhost (network stack), so no mock and no direct socket connection.
 
 If we can maintain a single connection, how fast can we go?
 Also note the SockSingleFunc benchmark is implemented using syscalls, so it blocks the entire go-routine thread rather than using epoll whilst waiting for the response, so it is not realistic to use.
