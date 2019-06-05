@@ -27,8 +27,6 @@ func parseBulkString(r io.Reader, buf []byte, timeout time.Duration) ([]byte, er
 		buf = buf[:origCap]
 		buf = append(buf, make([]byte, sizeDiff)...)
 		buf = buf[:origLen]
-	} else {
-		sizeDiff = 0
 	}
 	// Cannot slice []bytes from the start if you plan to keep the underlying array, use copy() to shift instead
 	copy(buf, buf[lenSize:cap(buf)]) // we're also copying until cap to zero out whatever was on the buf before
@@ -43,7 +41,7 @@ func parseBulkString(r io.Reader, buf []byte, timeout time.Duration) ([]byte, er
 			return nil, fmt.Errorf("Error reading from connection: '%s'", err)
 		}
 		if time.Now().Sub(t) > timeout {
-			return nil, ErrNoData
+			return nil, ErrTimeout
 		}
 	}
 	if !bytes.Equal(buf[size:size+2], sep) {
@@ -76,7 +74,7 @@ func parseSimpleString(r io.Reader, buf []byte, timeout time.Duration) ([]byte, 
 		}
 		buf = append(buf, readBuf...)
 		if time.Now().Sub(t) > timeout {
-			return nil, ErrNoData
+			return nil, ErrTimeout
 		}
 	}
 }

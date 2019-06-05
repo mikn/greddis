@@ -32,15 +32,15 @@ func main() {
 	conn.Write([]byte("del testkey\n"))
 }
 
-type ChanPool struct {
-	conns    chan net.Conn
-	network  string
-	address  string
-	maxSize  int
+type chanPool struct {
+	conns   chan net.Conn
+	network string
+	address string
+	maxSize int
 }
 
-func NewChanPool(network string, address string, maxSize int) *ChanPool {
-	var pool = &ChanPool{
+func newChanPool(network string, address string, maxSize int) *chanPool {
+	var pool = &chanPool{
 		conns:   make(chan net.Conn, maxSize),
 		network: network,
 		address: address,
@@ -49,7 +49,7 @@ func NewChanPool(network string, address string, maxSize int) *ChanPool {
 	return pool
 }
 
-func (p *ChanPool) Get() (c net.Conn, err error) {
+func (p *chanPool) Get() (c net.Conn, err error) {
 	err = nil
 	select {
 	case c = <-p.conns:
@@ -59,14 +59,14 @@ func (p *ChanPool) Get() (c net.Conn, err error) {
 	return c, err
 }
 
-func (p *ChanPool) Put(c net.Conn) {
+func (p *chanPool) Put(c net.Conn) {
 	select {
 	case p.conns <- c:
 	default:
 	}
 }
 
-type SemPool struct {
+type semPool struct {
 	conns   []net.Conn
 	ctx     context.Context
 	mutex   sync.Mutex
@@ -76,8 +76,8 @@ type SemPool struct {
 	address string
 }
 
-func NewSemPool(network string, address string, maxSize int64) *SemPool {
-	return &SemPool{
+func newSemPool(network string, address string, maxSize int64) *semPool {
+	return &semPool{
 		conns:   make([]net.Conn, 0, maxSize),
 		ctx:     context.Background(),
 		mutex:   sync.Mutex{},
@@ -88,7 +88,7 @@ func NewSemPool(network string, address string, maxSize int64) *SemPool {
 	}
 }
 
-func (s *SemPool) Get() (net.Conn, error) {
+func (s *semPool) Get() (net.Conn, error) {
 	s.sem.Acquire(s.ctx, 1)
 	s.mutex.Lock()
 	var conn net.Conn
@@ -110,7 +110,7 @@ func (s *SemPool) Get() (net.Conn, error) {
 	return conn, err
 }
 
-func (s *SemPool) Put(conn net.Conn) {
+func (s *semPool) Put(conn net.Conn) {
 	if len(s.conns) > s.maxSize {
 		fmt.Println("omg, why put more conns here!?")
 		return
@@ -121,7 +121,7 @@ func (s *SemPool) Put(conn net.Conn) {
 	s.sem.Release(1)
 }
 
-type SyncPool struct {
+type syncPool struct {
 	conns sync.Pool
 	sem   *semaphore.Weighted
 	ctx   context.Context
@@ -132,8 +132,8 @@ type poolRet struct {
 	Err  error
 }
 
-func NewSyncPool(network string, address string, maxSize int64) *SyncPool {
-	var pool = SyncPool{
+func newSyncPool(network string, address string, maxSize int64) *syncPool {
+	var pool = syncPool{
 		conns: sync.Pool{
 			New: func() interface{} {
 				var conn, err = net.Dial(network, address)
@@ -146,7 +146,7 @@ func NewSyncPool(network string, address string, maxSize int64) *SyncPool {
 	return &pool
 }
 
-func (s *SyncPool) Get() (net.Conn, error) {
+func (s *syncPool) Get() (net.Conn, error) {
 	s.sem.Acquire(s.ctx, 1)
 	var ret = s.conns.Get().(poolRet)
 	if ret.Err != nil {
@@ -156,12 +156,12 @@ func (s *SyncPool) Get() (net.Conn, error) {
 	return ret.Conn, ret.Err
 }
 
-func (s *SyncPool) Put(conn net.Conn) {
+func (s *syncPool) Put(conn net.Conn) {
 	s.conns.Put(poolRet{conn, nil})
 	s.sem.Release(1)
 }
 
-type AtomicPool struct {
+type atomicPool struct {
 	conns   []net.Conn
 	mutex   sync.Mutex
 	counter int32
@@ -170,8 +170,8 @@ type AtomicPool struct {
 	address string
 }
 
-func NewAtomicPool(network string, address string, maxSize int64) *AtomicPool {
-	var pool = AtomicPool{
+func newAtomicPool(network string, address string, maxSize int64) *atomicPool {
+	var pool = atomicPool{
 		conns:   make([]net.Conn, 0, maxSize),
 		mutex:   sync.Mutex{},
 		maxSize: int(maxSize),
@@ -182,7 +182,7 @@ func NewAtomicPool(network string, address string, maxSize int64) *AtomicPool {
 	return &pool
 }
 
-func (s *AtomicPool) Get() (net.Conn, error) {
+func (s *atomicPool) Get() (net.Conn, error) {
 	if atomic.LoadInt32(&s.counter) > 0 {
 		atomic.AddInt32(&s.counter, -1)
 	} else {
@@ -209,7 +209,7 @@ func (s *AtomicPool) Get() (net.Conn, error) {
 	return conn, err
 }
 
-func (s *AtomicPool) Put(conn net.Conn) {
+func (s *atomicPool) Put(conn net.Conn) {
 	if len(s.conns) > s.maxSize {
 		fmt.Println("omg, why put more conns here!?")
 		return

@@ -36,11 +36,12 @@ type pool struct {
 	targetBufSize   int
 }
 
+// TrimOptions represents advanced options to fine-tune the trimming background thread for connections
 type TrimOptions struct {
 	Interval           time.Duration // default is 500 ms
-	BufQuantileTargets []float64     // the targets to track
-	BufQuantileTarget  float64       // The specific target for buf size
-	AllowedMargin      float64       // this is 0-1 representing a percentage of how far from the lowest percentile a higher one can be so that it shifts to using a higher percentile. To disable it, set it below 0
+	BufQuantileTargets []float64     // the targets to track in 0-1 percentiles, if none given, the default is []float{0.8, 1}
+	BufQuantileTarget  float64       // The specific target for buf size. If invalid or omitted, it will pick the first (a[0]) percentile from BufQuantileTargets
+	AllowedMargin      float64       // this is 0-1 representing a fraction of how far from the lowest percentile a higher one can be so that it shifts to using a higher percentile. To disable it, set it below 0. It can also go higher than 1, but we recommend targeting a higher percentile instead. The default is 0.1
 }
 
 func initTrimOptions(opts *TrimOptions) *TrimOptions {
@@ -109,13 +110,14 @@ func connTrimming(ctx context.Context, tick <-chan time.Time, pool *pool) {
 	}
 }
 
+// PoolOptions is specified to tune the connection pool for the client
 type PoolOptions struct {
-	MaxSize         int
-	MaxIdle         int
-	ReadTimeout     time.Duration // Default is 500ms
-	Dial            func() (net.Conn, error)
-	InitialBufSize  int
-	TrimOptions     *TrimOptions
+	MaxSize         int                      // The maximum size of the connection pool. If reached, it will block the next client request until a connection is free
+	MaxIdle         int                      // How many connections that can remain idle in the pool, will otherwise be reaped by the trimming thread
+	ReadTimeout     time.Duration            // Default is 500ms
+	Dial            func() (net.Conn, error) // a function that returns an established TCP connection
+	InitialBufSize  int                      // The initial buffer size to associate with the connection, this is also the minimum buffer size allowed when creating new connections, but if the trimming thread is enabled and the percentile target returns a higher value, this will be used for any subsequent connections
+	TrimOptions     *TrimOptions             // fine-tuning options for the trimming thread, this should usually not be needed
 	bufSizeQuantile bufQuantile
 }
 

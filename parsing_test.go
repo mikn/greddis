@@ -75,7 +75,7 @@ func TestParseBulkString(t *testing.T) {
 		var buf = []byte("11\r\ntest ")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, nil)
 		var msg, err = parseBulkString(mockReader, buf, 0)
-		require.Error(t, err, ErrNoData)
+		require.Error(t, err, ErrTimeout)
 		require.Nil(t, msg)
 	})
 }
@@ -118,7 +118,7 @@ func TestParseSimpleString(t *testing.T) {
 		var buf = []byte("This is a")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, nil)
 		var msg, err = parseSimpleString(mockReader, buf, 0)
-		require.Error(t, err, ErrNoData)
+		require.Error(t, err, ErrTimeout)
 		require.Nil(t, msg)
 	})
 }

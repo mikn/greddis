@@ -8,30 +8,30 @@ import (
 )
 
 // TODO Ensure we return a connection error instead of panic with nil ref when there's no connection
-// TODO Ensure the byte buffer grows if we exceed the initial capacity when writing to it
 // TODO Parse a DSN instead of asking people to provide a Dial function with the address in it
 // TODO stats
 // TODO tracing
 // TODO max lifetime
-// TODO timeout
 
 var (
 	sep = []byte("\r\n")
 )
 
-// Client is the interface to talk to Redis and takes a lot of lessons from
-// how the SQL driver interface in the stdlib is written. It does not give
-// direct control over the connections, because this would pin the go-routine
-// to a thread and not allow the Go runtime to pause it in wait for the Redis
-// response. It uses connections with a single buffer attached, much like the
-// MySQL driver implementation, which allows it to avoid stack allocations.
-// It uses the same []byte buffer to interact with Redis to save memory.
+// Client is the interface to interact with Redis . It uses connections
+// with a single buffer attached, much like the MySQL driver implementation,
+// which allows it to reduce stack allocations. It uses the same []byte buffer
+// to interact with Redis to save memory.
 type Client interface {
+	// Get executes a get command on a redis server and returns a Result type, which you can use Scan
+	// on to get the result put into a variable
 	Get(key string) (Result, error)
+	// Set sets a Value in redis, it accepts a TTL which can be put to 0 to disable TTL
 	Set(key string, value driver.Value, ttl int) error
+	// Del removes a key from the redis server
 	Del(key string) error
 }
 
+// NewClient returns a client with the options specified
 func NewClient(ctx context.Context, opts *PoolOptions) Client {
 	return &client{
 		pool:     newPool(ctx, opts),
@@ -136,5 +136,5 @@ func (c *client) getBytesValue(value driver.Value, buf []byte) ([]byte, error) {
 		}
 		return val.([]byte), err
 	}
-	return nil, fmt.Errorf("Got non-parseable value!")
+	return nil, fmt.Errorf("Got non-parseable value")
 }

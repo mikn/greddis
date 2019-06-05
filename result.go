@@ -6,11 +6,18 @@ import (
 	"strconv"
 )
 
+// Scanner is an interface that allows you to implement custom logic with direct control over
+// the byte buffer being used by the connection. Do not modify it and do not return it.
+// As soon as your Scan function exits, the connection will start using the buffer again.
 type Scanner interface {
 	Scan(dst interface{}) error
 }
 
+// Result is what is returned from the Redis client if a response is expected
 type Result interface {
+	// Scan is called with a pointer to a value of a concrete type that you want to cast to,
+	// alternatively with an io.Writer or an implementation of the Scanner interface which
+	// accepts a []byte type input.
 	Scan(dst interface{}) error
 }
 

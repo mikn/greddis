@@ -78,7 +78,7 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 		syscall.Write(fd, bytes)
 		var ret = ret[:14]
 		syscall.Read(fd, ret)
-		ret = ret[:len(ret)]
+		ret = ret[:]
 	}
 	syscall.Write(fd, []byte("del testkey\r\n"))
 }
@@ -190,7 +190,7 @@ func BenchmarkRedigoSingle(b *testing.B) {
 func BenchmarkNetChanPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = NewChanPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newChanPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -202,7 +202,7 @@ func BenchmarkNetChanPool(b *testing.B) {
 	pool.Put(conn)
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, err = pool.Get()
+		conn, _ = pool.Get()
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -214,7 +214,7 @@ func BenchmarkNetChanPool(b *testing.B) {
 		pool.Put(conn)
 		s.Add(time.Now().Sub(t))
 	}
-	conn, err = pool.Get()
+	conn, _ = pool.Get()
 	conn.Write([]byte("del testkey\r\n"))
 	pool.Put(conn)
 }
@@ -222,7 +222,7 @@ func BenchmarkNetChanPool(b *testing.B) {
 func BenchmarkNetSyncPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = NewSyncPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newSyncPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -234,7 +234,7 @@ func BenchmarkNetSyncPool(b *testing.B) {
 	pool.Put(conn)
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, err = pool.Get()
+		conn, _ = pool.Get()
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -246,7 +246,7 @@ func BenchmarkNetSyncPool(b *testing.B) {
 		pool.Put(conn)
 		s.Add(time.Now().Sub(t))
 	}
-	conn, err = pool.Get()
+	conn, _ = pool.Get()
 	conn.Write([]byte("del testkey\r\n"))
 	pool.Put(conn)
 }
@@ -254,7 +254,7 @@ func BenchmarkNetSyncPool(b *testing.B) {
 func BenchmarkNetAtomicPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = NewAtomicPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newAtomicPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -266,7 +266,7 @@ func BenchmarkNetAtomicPool(b *testing.B) {
 	pool.Put(conn)
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, err = pool.Get()
+		conn, _ = pool.Get()
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -278,7 +278,7 @@ func BenchmarkNetAtomicPool(b *testing.B) {
 		pool.Put(conn)
 		s.Add(time.Now().Sub(t))
 	}
-	conn, err = pool.Get()
+	conn, _ = pool.Get()
 	conn.Write([]byte("del testkey\r\n"))
 	pool.Put(conn)
 }
@@ -286,7 +286,7 @@ func BenchmarkNetAtomicPool(b *testing.B) {
 func BenchmarkNetSemPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = NewSemPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newSemPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -298,7 +298,7 @@ func BenchmarkNetSemPool(b *testing.B) {
 	pool.Put(conn)
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, err = pool.Get()
+		conn, _ = pool.Get()
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -310,7 +310,7 @@ func BenchmarkNetSemPool(b *testing.B) {
 		pool.Put(conn)
 		s.Add(time.Now().Sub(t))
 	}
-	conn, err = pool.Get()
+	conn, _ = pool.Get()
 	conn.Write([]byte("del testkey\r\n"))
 	pool.Put(conn)
 }

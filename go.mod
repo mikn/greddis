@@ -6,6 +6,7 @@ require (
 	github.com/go-redis/redis v6.15.2+incompatible
 	github.com/golang/mock v1.1.1
 	github.com/gomodule/redigo v2.0.0+incompatible
+	github.com/gordonklaus/ineffassign v0.0.0-20190601041439-ed7b1b5ee0f8 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
