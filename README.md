@@ -1,5 +1,8 @@
 # Greddis
 
+[![CircleCI](https://circleci.com/gh/mikn/greddis/tree/master.svg?style=svg)](https://circleci.com/gh/mikn/greddis/tree/master)
+[![codecov](https://codecov.io/gh/mikn/greddis/branch/master/graph/badge.svg)](https://codecov.io/gh/mikn/greddis)
+
 **Note**: Currently Greddis only implements Del/Set/Get and is more fo a proof of concept than a fully implemented client.
 
 Greddis focus is high performance and letting the user of the library control its allocations. Is built using learnings from `database/sql/driver` implementations in the standard package. Many implementations of these interfaces provide consistent and high performance through good use of buffer pools, as well as the connection pool implementation in the standard library itself.
@@ -10,6 +13,7 @@ Furthermore, it is compatible with any implementation of Valuer/Scanner from `da
 
 ### Efficient use of connections?
 
+| Client  |     |
 | ------- | --- |
 | Greddis | Yes |
 | Redigo  | No  |
@@ -19,6 +23,7 @@ Furthermore, it is compatible with any implementation of Valuer/Scanner from `da
 
 ### Implements Redis Client protocol?
 
+| Client  |     |
 | ------- | --- |
 | Greddis | Yes |
 | Redigo  | No  |
@@ -28,6 +33,7 @@ According to the Redis Serialization Protocol ([RESP Specification](https://redi
 
 ### Pools request and response buffers to amortize allocation cost?
 
+| Client  |     |
 | ------- | --- |
 | Greddis | Yes |
 | Redigo  | No  |
@@ -37,6 +43,7 @@ Neither **Redigo** nor **GoRedis** pools its buffers for reuse and allocates the
 
 ### Allows for zero-copy parsing of response?
 
+| Client  |                  |
 | ------- | ---------------- |
 | Greddis | Yes              |
 | Redigo  | No (but kind of) |
