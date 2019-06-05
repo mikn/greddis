@@ -2,6 +2,8 @@
 
 [![CircleCI](https://circleci.com/gh/mikn/greddis/tree/master.svg?style=svg)](https://circleci.com/gh/mikn/greddis/tree/master)
 [![codecov](https://codecov.io/gh/mikn/greddis/branch/master/graph/badge.svg)](https://codecov.io/gh/mikn/greddis)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mikn/greddis)](https://goreportcard.com/report/github.com/mikn/greddis)
+[![Go doc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://godoc.org/github.com/mikn/greddis)
 
 **Note**: Currently Greddis only implements Del/Set/Get and is more fo a proof of concept than a fully implemented client.
 
