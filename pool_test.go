@@ -204,7 +204,7 @@ func TestTargetBufCalc(t *testing.T) {
 	//	})
 }
 
-func TestGC(t *testing.T) {
+func TestTrimming(t *testing.T) {
 	t.Run("failed dial don't break things", func(t *testing.T) {
 		var ctx, cancel = context.WithCancel(context.Background())
 		var pool, _ = testingPool(t)
@@ -224,8 +224,8 @@ func TestGC(t *testing.T) {
 		require.Equal(t, 2, len(pool.conns))
 		go connTrimming(ctx, tick, pool)
 		tick <- time.Now()
-		require.Equal(t, pool.opts.MaxIdle, len(pool.conns))
 		pool.connsMut.Lock()
+		require.Equal(t, pool.opts.MaxIdle, len(pool.conns))
 		require.Equal(t, pool.opts.MaxIdle, len(pool.connsRef))
 		pool.connsMut.Unlock()
 	})
@@ -236,8 +236,8 @@ func TestGC(t *testing.T) {
 		var tick = make(chan time.Time)
 		go connTrimming(ctx, tick, pool)
 		tick <- time.Now()
-		require.Equal(t, 0, len(pool.conns))
 		pool.connsMut.Lock()
+		require.Equal(t, 0, len(pool.conns))
 		require.Equal(t, 0, len(pool.connsRef))
 		pool.connsMut.Unlock()
 	})

@@ -149,32 +149,31 @@ func newPool(ctx context.Context, opts *PoolOptions) internalPool {
 // it takes several measures to ensure that it doesn't thrash too much on the targetBufSize
 func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 	// only spend time if we have enough samples
-	if q.count() < 100 {
-		return p.opts.InitialBufSize
-	}
-	var results = q.results()
-	var targetResult = results[target]
-	if targetResult < float64(p.opts.InitialBufSize) {
-		// make sure we don't reduce buf size below initial size
-		return p.opts.InitialBufSize
-	}
-	if math.Abs(targetResult-float64(p.targetBufSize)) < targetResult*0.1 {
-		// avoid too much bouncing of targetBufSize
-		return p.targetBufSize
-	}
-	var orderedResults = make([]float64, 0, len(results))
-	for q := range results {
-		orderedResults = append(orderedResults, q)
-	}
-	sort.Sort(sort.Reverse(sort.Float64Slice(orderedResults)))
-	var lastVal float64
-	for _, percentile := range orderedResults {
-		lastVal = results[percentile]
-		if targetResult+targetResult*p.opts.TrimOptions.AllowedMargin > lastVal {
-			return int(lastVal)
+	if q.count() >= 100 {
+		var results = q.results()
+		var targetResult = results[target]
+		if targetResult < float64(p.opts.InitialBufSize) {
+			// make sure we don't reduce buf size below initial size
+			return p.opts.InitialBufSize
+		}
+		if math.Abs(targetResult-float64(p.targetBufSize)) < targetResult*0.1 {
+			// avoid too much bouncing of targetBufSize
+			return p.targetBufSize
+		}
+		var orderedResults = make([]float64, 0, len(results))
+		for q := range results {
+			orderedResults = append(orderedResults, q)
+		}
+		sort.Sort(sort.Reverse(sort.Float64Slice(orderedResults)))
+		var lastVal float64
+		for _, percentile := range orderedResults {
+			lastVal = results[percentile]
+			if targetResult+targetResult*p.opts.TrimOptions.AllowedMargin > lastVal {
+				return int(lastVal)
+			}
 		}
 	}
-	return int(lastVal) // technically unreachable :(
+	return p.opts.InitialBufSize
 }
 
 func (p *pool) Get() (c *conn, err error) {
