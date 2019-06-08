@@ -1,4 +1,4 @@
-package redis
+package greddis
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 )
 
 type bufQuantile interface {
-	observe(float64)
-	results() map[float64]float64
-	count() int
+	Observe(float64)
+	Results() map[float64]float64
+	Count() int
 }
 
 type internalPool interface {
@@ -149,8 +149,8 @@ func newPool(ctx context.Context, opts *PoolOptions) internalPool {
 // it takes several measures to ensure that it doesn't thrash too much on the targetBufSize
 func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 	// only spend time if we have enough samples
-	if q.count() >= 100 {
-		var results = q.results()
+	if q.Count() >= 100 {
+		var results = q.Results()
 		var targetResult = results[target]
 		if targetResult < float64(p.opts.InitialBufSize) {
 			// make sure we don't reduce buf size below initial size
@@ -204,7 +204,7 @@ func (p *pool) Put(c *conn) {
 		return
 	}
 	// this causes 1B to be written every time you put the connection back into the pool, but no allocs on the stack
-	p.bufSizeQuantile.observe(float64(cap(c.buf)))
+	p.bufSizeQuantile.Observe(float64(cap(c.buf)))
 	select {
 	case p.conns <- c:
 	default:
@@ -237,13 +237,13 @@ func newQuantileStream(targets []float64) bufQuantile {
 	return q
 }
 
-func (q *quantileStream) observe(v float64) {
+func (q *quantileStream) Observe(v float64) {
 	q.mut.Lock()
 	q.q.Insert(v)
 	q.mut.Unlock()
 }
 
-func (q *quantileStream) results() map[float64]float64 {
+func (q *quantileStream) Results() map[float64]float64 {
 	var result = make(map[float64]float64, len(q.targets))
 	q.mut.RLock()
 	for _, target := range q.targets {
@@ -253,7 +253,7 @@ func (q *quantileStream) results() map[float64]float64 {
 	return result
 }
 
-func (q *quantileStream) count() int {
+func (q *quantileStream) Count() int {
 	q.mut.RLock()
 	var count = q.q.Count()
 	q.mut.RUnlock()

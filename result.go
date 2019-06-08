@@ -1,4 +1,5 @@
-package redis
+//go:generate mockgen -source result.go -destination ./mocks/mock_greddis/mock_result.go
+package greddis
 
 import (
 	"fmt"
@@ -14,17 +15,16 @@ type Scanner interface {
 }
 
 // Result is what is returned from the Redis client if a response is expected
-type Result interface {
-	// Scan is called with a pointer to a value of a concrete type that you want to cast to,
-	// alternatively with an io.Writer or an implementation of the Scanner interface which
-	// accepts a []byte type input.
-	Scan(dst interface{}) error
+type Result struct {
+	value  []byte
+	finish func()
 }
 
-type result struct {
-	value []byte
-	pool  internalPool
-	conn  *conn
+func NewResult(buf []byte) *Result {
+	return &Result{
+		value:  buf,
+		finish: func() {},
+	}
 }
 
 // Scan on result allows us to read with zero-copy into Scanner and io.Writer
@@ -33,15 +33,15 @@ type result struct {
 // you would need to have a value switch that takes []byte slice and does something
 // productive with it. This implementation can be simpler and forego the source
 // switch since it is custom made for Redis.
-func (r *result) Scan(dst interface{}) error {
+func (r *Result) Scan(dst interface{}) error {
 	switch d := dst.(type) {
 	case *string:
 		*d = string(r.value)
-		r.pool.Put(r.conn)
+		r.finish()
 		return nil
 	case *int:
-		var val, err = strconv.ParseInt(string(r.value), 10, 64)
-		r.pool.Put(r.conn)
+		var val, err = strconv.Atoi(string(r.value))
+		r.finish()
 		if err != nil {
 			return err
 		}
@@ -49,21 +49,21 @@ func (r *result) Scan(dst interface{}) error {
 		return nil
 	case *[]byte:
 		copy(*d, r.value)
-		r.pool.Put(r.conn)
+		r.finish()
 		return nil
 	case io.Writer:
 		var _, err = d.Write(r.value)
-		r.pool.Put(r.conn)
+		r.finish()
 		if err != nil {
 			return err
 		}
 		return nil
 	case Scanner:
 		var err = d.Scan(r.value)
-		r.pool.Put(r.conn)
+		r.finish()
 		return err
 	default:
-		r.pool.Put(r.conn)
+		r.finish()
 		return fmt.Errorf("dst is not of any supported type. Is of type %s", d)
 	}
 }

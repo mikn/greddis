@@ -1,4 +1,4 @@
-package redis
+package greddis
 
 import (
 	"bytes"
@@ -7,9 +7,11 @@ import (
 	"time"
 
 	gomock "github.com/golang/mock/gomock"
+	"github.com/mikn/greddis/mocks/mock_io"
 	"github.com/stretchr/testify/require"
 )
 
+//go:generate mockgen -destination ./mocks/mock_io/mock_reader.go io Reader
 func TestParseBulkString(t *testing.T) {
 	t.Run("normal string that fits", func(t *testing.T) {
 		var buf = []byte("11\r\ntest string\r\n")
@@ -36,7 +38,8 @@ func TestParseBulkString(t *testing.T) {
 	t.Run("multiple reads required", func(t *testing.T) {
 		// OMG this was a PITA to figure out
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = make([]byte, 0, 9)
 		buf = append(buf, "11\r\ntest "...)
 		mockReader.EXPECT().Read(make([]byte, 8)).DoAndReturn(func(b []byte) (int, error) {
@@ -53,7 +56,8 @@ func TestParseBulkString(t *testing.T) {
 	})
 	t.Run("Error on intRead", func(t *testing.T) {
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = []byte("This is a")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
 		var msg, err = parseBulkString(mockReader, buf, 500*time.Millisecond)
@@ -62,7 +66,8 @@ func TestParseBulkString(t *testing.T) {
 	})
 	t.Run("Error on read after int", func(t *testing.T) {
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = []byte("11\r\ntest ")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
 		var msg, err = parseBulkString(mockReader, buf, 500*time.Millisecond)
@@ -71,7 +76,8 @@ func TestParseBulkString(t *testing.T) {
 	})
 	t.Run("reach timeout", func(t *testing.T) {
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = []byte("11\r\ntest ")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, nil)
 		var msg, err = parseBulkString(mockReader, buf, 0)
@@ -105,7 +111,8 @@ func TestParseSimpleString(t *testing.T) {
 	})
 	t.Run("Error on read", func(t *testing.T) {
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = []byte("This is a")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
 		var msg, err = parseSimpleString(mockReader, buf, 500*time.Millisecond)
@@ -114,7 +121,8 @@ func TestParseSimpleString(t *testing.T) {
 	})
 	t.Run("Expect timeout", func(t *testing.T) {
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = []byte("This is a")
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, nil)
 		var msg, err = parseSimpleString(mockReader, buf, 0)
@@ -191,7 +199,8 @@ func TestReadSwitch(t *testing.T) {
 	})
 	t.Run("error on read", func(t *testing.T) {
 		var ctrl = gomock.NewController(t)
-		var mockReader = NewMockReader(ctrl)
+		defer ctrl.Finish()
+		var mockReader = mock_io.NewMockReader(ctrl)
 		var buf = make([]byte, 100)
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
 		var msg, err = readSwitch('+', parseSimpleString, mockReader, buf, 500*time.Millisecond)

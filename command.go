@@ -1,4 +1,4 @@
-package redis
+package greddis
 
 import (
 	"io"

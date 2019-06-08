@@ -16,7 +16,7 @@ import (
 	"github.com/dropbox/godropbox/net2"
 	goredis "github.com/go-redis/redis"
 	redigo "github.com/gomodule/redigo/redis"
-	redis "github.com/mikn/greddis"
+	"github.com/mikn/greddis"
 	"google.golang.org/grpc/benchmark/stats"
 )
 
@@ -146,7 +146,7 @@ func BenchmarkNetSingle(b *testing.B) {
 func BenchmarkGreddisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")
@@ -355,7 +355,7 @@ func BenchmarkGreddisPool8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")
@@ -429,7 +429,7 @@ func BenchmarkGreddisSet8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")
@@ -483,7 +483,7 @@ func BenchmarkGreddisSet1000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")
@@ -537,7 +537,7 @@ func BenchmarkGreddisSet5000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")
@@ -591,7 +591,7 @@ func BenchmarkGreddisGet5000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")
@@ -653,7 +653,7 @@ func BenchmarkGreddisGet50000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
-	var client = redis.NewClient(ctx, &redis.PoolOptions{
+	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
 			return net.Dial("tcp", "172.17.0.2:6379")

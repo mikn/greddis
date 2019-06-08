@@ -1,9 +1,9 @@
-package redis
+//go:generate mockgen -source client.go -destination ./mocks/mock_greddis/mock_client.go
+package greddis
 
 import (
 	"context"
 	"database/sql/driver"
-	"fmt"
 	"strconv"
 )
 
@@ -17,14 +17,14 @@ var (
 	sep = []byte("\r\n")
 )
 
-// Client is the interface to interact with Redis . It uses connections
-// with a single buffer attached, much like the MySQL driver implementation,
-// which allows it to reduce stack allocations. It uses the same []byte buffer
-// to interact with Redis to save memory.
+// Client is the interface to interact with Redis. It uses connections
+// with a single buffer attached, much like the MySQL driver implementation.
+// This allows it to reduce stack allocations. It uses the same []byte buffer
+// to send commands to Redis to save memory.
 type Client interface {
 	// Get executes a get command on a redis server and returns a Result type, which you can use Scan
 	// on to get the result put into a variable
-	Get(key string) (Result, error)
+	Get(key string) (*Result, error)
 	// Set sets a Value in redis, it accepts a TTL which can be put to 0 to disable TTL
 	Set(key string, value driver.Value, ttl int) error
 	// Del removes a key from the redis server
@@ -35,18 +35,18 @@ type Client interface {
 func NewClient(ctx context.Context, opts *PoolOptions) Client {
 	return &client{
 		pool:     newPool(ctx, opts),
-		resBuf:   &result{},
+		resBuf:   &Result{},
 		poolOpts: opts,
 	}
 }
 
 type client struct {
 	pool     internalPool
-	resBuf   *result
+	resBuf   *Result
 	poolOpts *PoolOptions
 }
 
-func (c *client) Get(key string) (Result, error) {
+func (c *client) Get(key string) (*Result, error) {
 	var conn, err = c.pool.Get()
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func (c *client) Get(key string) (Result, error) {
 		c.pool.Put(conn)
 		return nil, err
 	}
-	return c.getResult(conn, buf), err
+	return c.result(conn, buf), err
 }
 
 func (c *client) Set(key string, value driver.Value, ttl int) error {
@@ -71,7 +71,7 @@ func (c *client) Set(key string, value driver.Value, ttl int) error {
 		return err
 	}
 	var val []byte
-	val, err = c.getBytesValue(value, conn.buf[:0])
+	val, err = toBytesValue(value, conn.buf[:0])
 	if err != nil {
 		return err
 	}
@@ -102,39 +102,10 @@ func (c *client) Del(key string) error {
 	return err
 }
 
-func (c *client) getResult(conn *conn, buf []byte) *result {
-	c.resBuf.conn = conn
-	c.resBuf.pool = c.pool
+func (c *client) result(conn *conn, buf []byte) *Result {
+	c.resBuf.finish = func() {
+		c.pool.Put(conn)
+	}
 	c.resBuf.value = buf
 	return c.resBuf
-}
-
-func (c *client) getBytesValue(value driver.Value, buf []byte) ([]byte, error) {
-	switch d := value.(type) {
-	case string:
-		buf = append(buf, d...)
-		return buf, nil
-	case []byte:
-		buf = append(buf, d...)
-		return buf, nil
-	case int:
-		buf = strconv.AppendInt(buf, int64(d), 10)
-		return buf, nil
-	case *string:
-		buf = append(buf, *d...)
-		return buf, nil
-	case *[]byte:
-		buf = append(buf, *d...)
-		return buf, nil
-	case *int:
-		buf = strconv.AppendInt(buf, int64(*d), 10)
-		return buf, nil
-	case driver.Valuer:
-		var val, err = d.Value()
-		if err != nil {
-			return nil, err
-		}
-		return val.([]byte), err
-	}
-	return nil, fmt.Errorf("Got non-parseable value")
 }
