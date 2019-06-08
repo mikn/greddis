@@ -33,15 +33,9 @@ type Client interface {
 
 // NewClient returns a client with the options specified
 func NewClient(ctx context.Context, opts *PoolOptions) Client {
-	var pool = newPool(ctx, opts)
-	var putConn = &putConn{pool: pool}
 	return &client{
-		resBuf: &Result{finish: func() {
-			putConn.pool.Put(putConn.conn)
-		}},
-		pool:     pool,
+		pool:     newPool(ctx, opts),
 		poolOpts: opts,
-		putConn:  putConn,
 	}
 }
 
@@ -73,7 +67,8 @@ func (c *client) Get(key string) (*Result, error) {
 		c.pool.Put(conn)
 		return nil, err
 	}
-	return c.result(conn, buf), err
+	conn.res.value = conn.buf
+	return conn.res, err
 }
 
 func (c *client) Set(key string, value driver.Value, ttl int) error {
@@ -111,10 +106,4 @@ func (c *client) Del(key string) error {
 	_, err = readSimpleString(conn.conn, conn.buf, c.poolOpts.ReadTimeout)
 	c.pool.Put(conn)
 	return err
-}
-
-func (c *client) result(conn *conn, buf []byte) *Result {
-	c.putConn.conn = conn
-	c.resBuf.value = buf
-	return c.resBuf
 }

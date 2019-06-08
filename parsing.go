@@ -90,7 +90,7 @@ func readInteger(r io.Reader, buf []byte, timeout time.Duration) (int, error) {
 		return 0, err
 	}
 	var i int
-	i, err = strconv.Atoi(string(buf))
+	i, err = strconv.Atoi(*(*string)(unsafe.Pointer(&buf)))
 	if err != nil {
 		return 0, err
 	}

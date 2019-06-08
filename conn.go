@@ -9,6 +9,7 @@ import (
 type conn struct {
 	conn        net.Conn
 	cmd         *command
+	res         *Result
 	buf         []byte
 	initBufSize int
 	created     time.Time
@@ -25,6 +26,7 @@ func newConn(c net.Conn, bufSize int) *conn {
 		conn:        c,
 		buf:         buf,
 		cmd:         cmd,
+		res:         NewResult(buf),
 		initBufSize: bufSize,
 		created:     time.Now(),
 		toBeClosed:  0,

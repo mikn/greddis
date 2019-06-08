@@ -176,8 +176,9 @@ func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 	return p.opts.InitialBufSize
 }
 
-func (p *pool) Get() (c *conn, err error) {
-	err = nil
+func (p *pool) Get() (*conn, error) {
+	var c *conn
+	var err error
 	select {
 	case c = <-p.conns:
 		if c.getToBeClosed() {
@@ -191,6 +192,10 @@ func (p *pool) Get() (c *conn, err error) {
 			return nil, err
 		}
 		c = newConn(conn, p.targetBufSize)
+		// when result is Scanned, put conn back to pool
+		c.res.finish = func() {
+			p.Put(c)
+		}
 		p.connsMut.Lock()
 		p.connsRef = append(p.connsRef, c)
 		p.connsMut.Unlock()
