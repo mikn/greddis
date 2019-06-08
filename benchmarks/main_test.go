@@ -351,7 +351,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 	conn.ReleaseConnection()
 }
 
-func BenchmarkGreddisPool8b(b *testing.B) {
+func BenchmarkGreddisGet8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var ctx = context.Background()
@@ -376,7 +376,7 @@ func BenchmarkGreddisPool8b(b *testing.B) {
 	client.Del("testkey")
 }
 
-func BenchmarkGoRedisPool8b(b *testing.B) {
+func BenchmarkGoRedisGet8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
@@ -392,7 +392,7 @@ func BenchmarkGoRedisPool8b(b *testing.B) {
 	client.Del("testkey")
 }
 
-func BenchmarkRedigoPool8b(b *testing.B) {
+func BenchmarkRedigoGet8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var pool = redigo.Pool{

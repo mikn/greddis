@@ -77,21 +77,22 @@ BenchmarkNet2Pool-8           	  100000	     23398 ns/op	     312 B/op	       5 
 After having picked the most efficient (using a channel for the pool) this was picked for implementation in Greddis. It was also the only one with zero allocs, so yay!
 The benchmarks following is comparing Redigo, GoRedis and Greddis at different object sizes and set vs get.
 ```
-BenchmarkGreddisPool8b-8      	  100000	     21164 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGoRedisPool8b-8      	   50000	     24077 ns/op	     320 B/op	      14 allocs/op
-BenchmarkRedigoPool8b-8       	  100000	     22002 ns/op	     104 B/op	       7 allocs/op
-BenchmarkGreddisSet8b-8       	  100000	     21365 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGoRedisSet8b-8       	  100000	     22863 ns/op	     226 B/op	       7 allocs/op
-BenchmarkRedigoSet8b-8        	  100000	     21886 ns/op	      86 B/op	       5 allocs/op
-BenchmarkGreddisSet1000b-8    	  100000	     21721 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGoRedisSet1000b-8    	  100000	     24152 ns/op	     226 B/op	       7 allocs/op
-BenchmarkRedigoSet1000b-8     	  100000	     22161 ns/op	      86 B/op	       5 allocs/op
-BenchmarkGreddisSet5000b-8    	  100000	     22762 ns/op	       1 B/op	       0 allocs/op
-BenchmarkGoRedisSet5000b-8    	   50000	     33952 ns/op	     226 B/op	       7 allocs/op
-BenchmarkRedigoSet5000b-8     	   50000	     32472 ns/op	      87 B/op	       5 allocs/op
-BenchmarkGreddisGet5000b-8    	  100000	     23417 ns/op	       5 B/op	       1 allocs/op
-BenchmarkGoRedisGet5000b-8    	   50000	     30864 ns/op	   16457 B/op	      15 allocs/op
-BenchmarkRedigoGet5000b-8     	   50000	     25516 ns/op	    5562 B/op	       9 allocs/op
-BenchmarkGreddisGet50000b-8   	   50000	     39578 ns/op	      13 B/op	       1 allocs/op
-BenchmarkGoRedisGet50000b-8   	   20000	     65693 ns/op	  176770 B/op	      15 allocs/op
-BenchmarkRedigoGet50000b-8    	   30000	     48032 ns/op	   57572 B/op	       9 allocs/op
+BenchmarkGreddisGet8b-8       	  100000	     21742 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGoRedisGet8b-8       	   50000	     24330 ns/op	     320 B/op	      14 allocs/op
+BenchmarkRedigoGet8b-8        	  100000	     22981 ns/op	     192 B/op	       9 allocs/op
+BenchmarkGreddisSet8b-8       	  100000	     21551 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGoRedisSet8b-8       	   50000	     23553 ns/op	     226 B/op	       7 allocs/op
+BenchmarkRedigoSet8b-8        	  100000	     24023 ns/op	      86 B/op	       5 allocs/op
+BenchmarkGreddisSet1000b-8    	  100000	     22501 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGoRedisSet1000b-8    	   50000	     23873 ns/op	     226 B/op	       7 allocs/op
+BenchmarkRedigoSet1000b-8     	  100000	     23167 ns/op	      86 B/op	       5 allocs/op
+BenchmarkGreddisSet5000b-8    	  100000	     22692 ns/op	       1 B/op	       0 allocs/op
+BenchmarkGoRedisSet5000b-8    	   50000	     35115 ns/op	     226 B/op	       7 allocs/op
+BenchmarkRedigoSet5000b-8     	   50000	     33089 ns/op	      86 B/op	       5 allocs/op
+BenchmarkGreddisGet5000b-8    	  100000	     23083 ns/op	       1 B/op	       0 allocs/op
+BenchmarkGoRedisGet5000b-8    	   50000	     31517 ns/op	   16475 B/op	      15 allocs/op
+BenchmarkRedigoGet5000b-8     	   50000	     27192 ns/op	    5563 B/op	       9 allocs/op
+BenchmarkGreddisGet50000b-8   	   30000	     41397 ns/op	      14 B/op	       0 allocs/op
+BenchmarkGoRedisGet50000b-8   	   20000	     66963 ns/op	  177929 B/op	      15 allocs/op
+BenchmarkRedigoGet50000b-8    	   30000	     50056 ns/op	   57574 B/op	       9 allocs/op
+```

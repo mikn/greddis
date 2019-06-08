@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"time"
+	"unsafe"
 )
 
 func parseBulkString(r io.Reader, buf []byte, timeout time.Duration) ([]byte, error) {
@@ -15,7 +16,8 @@ func parseBulkString(r io.Reader, buf []byte, timeout time.Duration) ([]byte, er
 		return nil, err
 	}
 	var size int
-	size, err = strconv.Atoi(string(intBuf))
+	// this allows us to do zero-alloc conversion ref: https://golang.org/src/strings/builder.go#L45
+	size, err = strconv.Atoi(*(*string)(unsafe.Pointer(&intBuf)))
 	if size < 0 {
 		return nil, nil
 	}

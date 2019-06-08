@@ -33,17 +33,28 @@ type Client interface {
 
 // NewClient returns a client with the options specified
 func NewClient(ctx context.Context, opts *PoolOptions) Client {
+	var pool = newPool(ctx, opts)
+	var putConn = &putConn{pool: pool}
 	return &client{
-		pool:     newPool(ctx, opts),
-		resBuf:   &Result{},
+		resBuf: &Result{finish: func() {
+			putConn.pool.Put(putConn.conn)
+		}},
+		pool:     pool,
 		poolOpts: opts,
+		putConn:  putConn,
 	}
+}
+
+type putConn struct {
+	pool internalPool
+	conn *conn
 }
 
 type client struct {
 	pool     internalPool
 	resBuf   *Result
 	poolOpts *PoolOptions
+	putConn  *putConn
 }
 
 func (c *client) Get(key string) (*Result, error) {
@@ -103,9 +114,7 @@ func (c *client) Del(key string) error {
 }
 
 func (c *client) result(conn *conn, buf []byte) *Result {
-	c.resBuf.finish = func() {
-		c.pool.Put(conn)
-	}
+	c.putConn.conn = conn
 	c.resBuf.value = buf
 	return c.resBuf
 }
