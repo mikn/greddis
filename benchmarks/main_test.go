@@ -39,7 +39,6 @@ func BenchmarkNetSingleBufIO(b *testing.B) {
 		rw.Flush()
 		rw.ReadBytes('\n')
 		rw.ReadBytes('\n')
-		//testCall(conn, bytes, ret)
 	}
 	conn.Write([]byte("del testkey\r\n"))
 	debug.FreeOSMemory()
@@ -51,9 +50,7 @@ func testCallBufIO(rw bufio.ReadWriter) string {
 	rw.WriteString("get testkey\r\n")
 	rw.Flush()
 	rw.ReadString('\n')
-	//rw.ReadString('\n')
 	rw.Read(b)
-	//return string(ret[:length])
 	return string(b)
 }
 

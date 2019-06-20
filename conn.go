@@ -18,8 +18,8 @@ type conn struct {
 }
 
 func newConn(c net.Conn, bufSize int) *conn {
-	var buf = make([]byte, bufSize)
-	var cmd = &command{}
+	buf := make([]byte, bufSize)
+	cmd := &command{}
 	cmd.array = &respArray{}
 	cmd.array.reset(buf)
 	return &conn{
@@ -50,8 +50,6 @@ func (c *conn) setInUse(yes bool) {
 	var truth int64
 	if yes {
 		truth = 1
-	} else {
-		truth = 0
 	}
 	atomic.StoreInt64(&c.inUse, truth)
 }

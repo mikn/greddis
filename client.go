@@ -51,16 +51,13 @@ type client struct {
 }
 
 func (c *client) Get(key string) (*Result, error) {
-	var conn, err = c.pool.Get()
+	conn, err := c.pool.Get()
 	if err != nil {
 		return nil, err
 	}
-	var cmd = conn.cmd
-	cmd.add("GET").add(key)
-	conn.buf = cmd.writeTo(conn.conn)
-	var buf = conn.buf[:0]
-	buf, err = readBulkString(conn.conn, buf)
-	conn.buf = buf
+	conn.cmd.add("GET").add(key)
+	conn.buf = conn.cmd.writeTo(conn.conn)
+	conn.buf, err = readBulkString(conn.conn, conn.buf[:0])
 	if err != nil {
 		c.pool.Put(conn)
 		return nil, err
@@ -70,35 +67,32 @@ func (c *client) Get(key string) (*Result, error) {
 }
 
 func (c *client) Set(key string, value driver.Value, ttl int) error {
-	var conn, err = c.pool.Get()
+	conn, err := c.pool.Get()
 	if err != nil {
 		return err
 	}
-	var val []byte
-	val, err = toBytesValue(value, conn.buf[:0])
+	val, err := toBytesValue(value, conn.buf[:0])
 	if err != nil {
 		c.pool.Put(conn)
 		return err
 	}
-	var cmd = conn.cmd
-	cmd.add("SET").add(key).add(val)
+	conn.cmd.add("SET").add(key).add(val)
 	if ttl > 0 {
-		cmd.add("EX").add(ttl)
+		conn.cmd.add("EX").add(ttl)
 	}
-	conn.buf = cmd.writeTo(conn.conn)
+	conn.buf = conn.cmd.writeTo(conn.conn)
 	_, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(conn)
 	return err
 }
 
 func (c *client) Del(key string) error {
-	var conn, err = c.pool.Get()
+	conn, err := c.pool.Get()
 	if err != nil {
 		return err
 	}
-	var cmd = conn.cmd
-	cmd.add("DEL").add(key)
-	conn.buf = cmd.writeTo(conn.conn)
+	conn.cmd.add("DEL").add(key)
+	conn.buf = conn.cmd.writeTo(conn.conn)
 	_, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(conn)
 	return err

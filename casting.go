@@ -27,7 +27,7 @@ func toBytesValue(value driver.Value, buf []byte) ([]byte, error) {
 		buf = strconv.AppendInt(buf, int64(*d), 10)
 		return buf, nil
 	case driver.Valuer:
-		var val, err = d.Value()
+		val, err := d.Value()
 		if err != nil {
 			return nil, err
 		}

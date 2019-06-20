@@ -14,7 +14,7 @@ func (c *command) add(item interface{}) *command {
 	case string:
 		c.array.addBulkString([]byte(v))
 	case int:
-		var i = strconv.Itoa(v)
+		i := strconv.Itoa(v)
 		c.array.addBulkString([]byte(i))
 	case []byte:
 		c.array.addBulkString(v)

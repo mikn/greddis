@@ -51,7 +51,7 @@ func initTrimOptions(opts *TrimOptions) *TrimOptions {
 	if opts.BufQuantileTargets == nil {
 		opts.BufQuantileTargets = []float64{0.8, 1}
 	}
-	var targetExists = false
+	targetExists := false
 	for _, v := range opts.BufQuantileTargets {
 		if v == opts.BufQuantileTarget {
 			targetExists = true
@@ -79,11 +79,11 @@ func connTrimming(ctx context.Context, tick <-chan time.Time, pool *pool) {
 			pool.connsMut.Lock()
 			// check whether we have too many idle connections
 			for i := len(pool.conns); i > pool.opts.MaxIdle; i-- {
-				var c = <-pool.conns
+				c := <-pool.conns
 				c.setToBeClosed()
 			}
 			// close connections scheduled for closing
-			var filtered = pool.connsRef[:0] // (ab)use the relationship of slice/array
+			filtered := pool.connsRef[:0] // (ab)use the relationship of slice/array
 			for _, conn := range pool.connsRef {
 				if conn.getToBeClosed() && !conn.getInUse() {
 					conn.conn.Close()
@@ -126,7 +126,7 @@ func newPool(ctx context.Context, opts *PoolOptions) internalPool {
 	if opts.ReadTimeout == 0 {
 		opts.ReadTimeout = 500 * time.Millisecond
 	}
-	var p = &pool{
+	p := &pool{
 		conns:           make(chan *conn, opts.MaxSize),
 		maxSize:         opts.MaxSize,
 		dial:            opts.Dial,
@@ -147,8 +147,8 @@ func newPool(ctx context.Context, opts *PoolOptions) internalPool {
 func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 	// only spend time if we have enough samples
 	if q.Count() >= 100 {
-		var results = q.Results()
-		var targetResult = results[target]
+		results := q.Results()
+		targetResult := results[target]
 		if targetResult < float64(p.opts.InitialBufSize) {
 			// make sure we don't reduce buf size below initial size
 			return p.opts.InitialBufSize
@@ -157,14 +157,13 @@ func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 			// avoid too much bouncing of targetBufSize
 			return p.targetBufSize
 		}
-		var orderedResults = make([]float64, 0, len(results))
+		orderedResults := make([]float64, 0, len(results))
 		for q := range results {
 			orderedResults = append(orderedResults, q)
 		}
 		sort.Sort(sort.Reverse(sort.Float64Slice(orderedResults)))
-		var lastVal float64
 		for _, percentile := range orderedResults {
-			lastVal = results[percentile]
+			lastVal := results[percentile]
 			if targetResult+targetResult*p.opts.TrimOptions.AllowedMargin > lastVal {
 				return int(lastVal)
 			}
@@ -173,17 +172,14 @@ func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 	return p.opts.InitialBufSize
 }
 
-func (p *pool) Get() (*conn, error) {
-	var c *conn
-	var err error
+func (p *pool) Get() (c *conn, err error) {
 	select {
 	case c = <-p.conns:
 		if c.getToBeClosed() {
 			c, err = p.Get()
 		}
 	default:
-		var conn net.Conn
-		conn, err = p.dial()
+		conn, err := p.dial()
 		if err != nil {
 			return nil, err
 		}
@@ -221,7 +217,7 @@ type quantileStream struct {
 }
 
 func sliceToTargets(slice []float64) map[float64]float64 {
-	var formattedTarget = make(map[float64]float64, len(slice))
+	formattedTarget := make(map[float64]float64, len(slice))
 	for _, target := range slice {
 		formattedTarget[target] = 1 - target
 		if target != 1 {
@@ -232,7 +228,7 @@ func sliceToTargets(slice []float64) map[float64]float64 {
 }
 
 func newQuantileStream(targets []float64) bufQuantile {
-	var q = &quantileStream{
+	q := &quantileStream{
 		targets: targets,
 		q:       quantile.NewTargeted(sliceToTargets(targets)),
 		mut:     sync.RWMutex{},
@@ -247,7 +243,7 @@ func (q *quantileStream) Observe(v float64) {
 }
 
 func (q *quantileStream) Results() map[float64]float64 {
-	var result = make(map[float64]float64, len(q.targets))
+	result := make(map[float64]float64, len(q.targets))
 	q.mut.RLock()
 	for _, target := range q.targets {
 		result[target] = q.q.Query(target)
@@ -258,7 +254,7 @@ func (q *quantileStream) Results() map[float64]float64 {
 
 func (q *quantileStream) Count() int {
 	q.mut.RLock()
-	var count = q.q.Count()
+	count := q.q.Count()
 	q.mut.RUnlock()
 	return count
 }
