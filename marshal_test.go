@@ -9,19 +9,19 @@ import (
 func TestEncodeBulkString(t *testing.T) {
 	t.Run("regular string", func(t *testing.T) {
 		var buf []byte
-		buf = encodeBulkString([]byte("test string"), buf)
+		buf = marshalBulkString([]byte("test string"), buf)
 		require.NotNil(t, buf)
 		require.Equal(t, []byte("$11\r\ntest string\r\n"), buf)
 	})
 	t.Run("nil string", func(t *testing.T) {
 		var buf []byte
-		buf = encodeBulkString(nil, buf)
+		buf = marshalBulkString(nil, buf)
 		require.NotNil(t, buf)
 		require.Equal(t, []byte("$-1\r\n"), buf)
 	})
 	t.Run("empty string", func(t *testing.T) {
 		var buf []byte
-		buf = encodeBulkString([]byte(""), buf)
+		buf = marshalBulkString([]byte(""), buf)
 		require.NotNil(t, buf)
 		require.Equal(t, []byte("$0\r\n\r\n"), buf)
 	})
@@ -53,14 +53,14 @@ func TestArray(t *testing.T) {
 		var origBuf = make([]byte, 100)
 		var arr = &respArray{}
 		arr.setToNil(origBuf)
-		origBuf = arr.encode()
+		origBuf = arr.marshal()
 		require.Equal(t, []byte("*-1\r\n"), origBuf)
 	})
 	t.Run("empty array", func(t *testing.T) {
 		var origBuf = make([]byte, 100)
 		var arr = &respArray{}
 		arr.reset(origBuf)
-		origBuf = arr.encode()
+		origBuf = arr.marshal()
 		require.Equal(t, []byte("*0\r\n"), origBuf)
 	})
 	t.Run("one item array", func(t *testing.T) {
@@ -68,7 +68,7 @@ func TestArray(t *testing.T) {
 		var arr = &respArray{}
 		arr.reset(origBuf)
 		arr.addBulkString([]byte("test string"))
-		origBuf = arr.encode()
+		origBuf = arr.marshal()
 		require.Equal(t, []byte("*1\r\n$11\r\ntest string\r\n"), origBuf)
 	})
 	t.Run("three item array", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestArray(t *testing.T) {
 		arr.addBulkString([]byte("test string"))
 		arr.addBulkString([]byte("test string"))
 		arr.addBulkString([]byte("test string"))
-		origBuf = arr.encode()
+		origBuf = arr.marshal()
 		require.Equal(t, []byte("*3\r\n$11\r\ntest string\r\n$11\r\ntest string\r\n$11\r\ntest string\r\n"), origBuf)
 	})
 }

@@ -24,7 +24,7 @@ func (c *command) add(item interface{}) *command {
 
 // writeTo takes a io.Writer to write to and returns the buffer that was passed in
 func (c *command) writeTo(w io.Writer) []byte {
-	w.Write(c.array.encode())
+	w.Write(c.array.marshal())
 	c.array.reset(c.array.origBuf)
 	return c.array.origBuf
 }

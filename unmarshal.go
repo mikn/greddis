@@ -9,9 +9,9 @@ import (
 	"unsafe"
 )
 
-func parseBulkString(r io.Reader, buf []byte) ([]byte, error) {
+func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
 	var err error
-	intBuf, err := parseSimpleString(r, buf)
+	intBuf, err := unmarshalSimpleString(r, buf)
 	if err != nil {
 		return nil, err
 	}
@@ -27,11 +27,11 @@ func parseBulkString(r io.Reader, buf []byte) ([]byte, error) {
 	if size-cap(buf) > 0 {
 		buf = make([]byte, size)
 	}
-	// remove size prefix from []byte buffer
+	// "remove" size prefix from []byte buffer
 	copy(buf, oldBuf[sizeLen:])
 	buf = buf[:len(buf)-sizeLen]
 	if len(buf) < size {
-		// only pass in the bytes we want read to
+		// only pass in the bytes we want read to (and are missing)
 		readBuf := buf[len(buf):size]
 		_, err = io.ReadFull(r, readBuf)
 		if err != nil {
@@ -45,7 +45,7 @@ func parseBulkString(r io.Reader, buf []byte) ([]byte, error) {
 	return buf[:size-2], nil
 }
 
-func parseSimpleString(r io.Reader, buf []byte) ([]byte, error) {
+func unmarshalSimpleString(r io.Reader, buf []byte) ([]byte, error) {
 	for {
 		for i := 0; i < len(buf)-1; i++ {
 			if buf[i] == '\r' && buf[i+1] == '\n' {
@@ -68,7 +68,7 @@ func parseSimpleString(r io.Reader, buf []byte) ([]byte, error) {
 // readInteger not sure it is the right choice here to actually return an int rather
 // than follow BulkString and SimpleString conventions
 func readInteger(r io.Reader, buf []byte) (i int, err error) {
-	buf, err = readSwitch(':', parseSimpleString, r, buf)
+	buf, err = readSwitch(':', unmarshalSimpleString, r, buf)
 	if err != nil {
 		return 0, err
 	}
@@ -80,11 +80,11 @@ func readInteger(r io.Reader, buf []byte) (i int, err error) {
 }
 
 func readBulkString(r io.Reader, buf []byte) ([]byte, error) {
-	return readSwitch('$', parseBulkString, r, buf)
+	return readSwitch('$', unmarshalBulkString, r, buf)
 }
 
 func readSimpleString(r io.Reader, buf []byte) ([]byte, error) {
-	return readSwitch('+', parseSimpleString, r, buf)
+	return readSwitch('+', unmarshalSimpleString, r, buf)
 }
 
 type readFunc func(io.Reader, []byte) ([]byte, error)
@@ -97,10 +97,10 @@ func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte
 	}
 	switch buf[0] {
 	case prefix:
-		copy(buf, buf[1:i])
+		copy(buf, buf[1:i]) // remove prefix
 		return callback(r, buf[:i-1])
 	case '-':
-		str, err := parseSimpleString(r, buf[1:i])
+		str, err := unmarshalSimpleString(r, buf[1:i])
 		if err != nil {
 			return nil, err
 		}

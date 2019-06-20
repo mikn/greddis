@@ -4,7 +4,7 @@ import (
 	"strconv"
 )
 
-func encodeBulkString(in []byte, buf []byte) []byte {
+func marshalBulkString(in []byte, buf []byte) []byte {
 	if in == nil {
 		buf = append(buf, []byte("$-1")...)
 		buf = append(buf, sep...)
@@ -50,11 +50,11 @@ func (a *respArray) setToNil(buf []byte) {
 }
 
 func (a *respArray) addBulkString(item []byte) {
-	a.buf = encodeBulkString(item, a.buf)
+	a.buf = marshalBulkString(item, a.buf)
 	a.length++
 }
 
-func (a *respArray) encode() []byte {
+func (a *respArray) marshal() []byte {
 	a.origBuf = append(a.origBuf, '*')
 	a.origBuf = strconv.AppendInt(a.origBuf, a.length, 10)
 	a.origBuf = append(a.origBuf, sep...)
