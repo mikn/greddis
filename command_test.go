@@ -13,8 +13,8 @@ func TestWriteCommand(t *testing.T) {
 	var cmd = &command{}
 	cmd.array = &respArray{}
 	cmd.array.reset(origBuf)
-	cmd.addItem([]byte("GET"))
-	cmd.addItem([]byte("testkey"))
+	cmd.add("GET")
+	cmd.add("testkey")
 	cmd.writeTo(out)
 	require.Equal(t, "*2\r\n$3\r\nGET\r\n$7\r\ntestkey\r\n", out.String())
 }

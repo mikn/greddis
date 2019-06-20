@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	gomock "github.com/golang/mock/gomock"
 	"github.com/mikn/greddis"
@@ -47,6 +48,8 @@ func TestClientGet(t *testing.T) {
 		mockConn.EXPECT().Write(buf)
 		buf = buf[:cap(buf)]
 		mockConn.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
+		mockConn.EXPECT().SetReadDeadline(gomock.Any())
+		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
 		var res, err = client.Get("testkey")
 		require.Error(t, err)
@@ -64,6 +67,8 @@ func TestClientGet(t *testing.T) {
 		}
 		var buf = make([]byte, 0, 4096)
 		buf = append(buf, []byte("*2\r\n$3\r\nGET\r\n$7\r\ntestkey\r\n")...)
+		mockConn.EXPECT().SetReadDeadline(gomock.Any())
+		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		mockConn.EXPECT().Write(buf)
 		buf = buf[:cap(buf)]
 		mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
@@ -93,9 +98,14 @@ func TestClientSet(t *testing.T) {
 	})
 	t.Run("fail on get value", func(t *testing.T) {
 		var ctx = context.Background()
+		var ctrl = gomock.NewController(t)
+		defer ctrl.Finish()
+		var mockConn = mock_net.NewMockConn(ctrl)
+		mockConn.EXPECT().SetReadDeadline(gomock.Any())
+		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var opts = &greddis.PoolOptions{
 			Dial: func() (net.Conn, error) {
-				return nil, nil
+				return mockConn, nil
 			},
 		}
 		var client = greddis.NewClient(ctx, opts)
@@ -116,11 +126,13 @@ func TestClientSet(t *testing.T) {
 		var buf = make([]byte, 0, 4096)
 		buf = append(buf, []byte("*3\r\n$3\r\nSET\r\n$7\r\ntestkey\r\n$11\r\ntest string\r\n")...)
 		mockConn.EXPECT().Write(buf)
+		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		buf = buf[:cap(buf)]
 		mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
 			copy(b, []byte("+OK\r\n"))
 			return 5, nil
 		})
+		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
 		var err = client.Set("testkey", "test string", 0)
 		require.NoError(t, err)
@@ -137,12 +149,14 @@ func TestClientSet(t *testing.T) {
 		}
 		var buf = make([]byte, 0, 4096)
 		buf = append(buf, []byte("*5\r\n$3\r\nSET\r\n$7\r\ntestkey\r\n$11\r\ntest string\r\n$2\r\nEX\r\n$1\r\n1\r\n")...)
+		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		mockConn.EXPECT().Write(buf)
 		buf = buf[:cap(buf)]
 		mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
 			copy(b, []byte("+OK\r\n"))
 			return 5, nil
 		})
+		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
 		var err = client.Set("testkey", "test string", 1)
 		require.NoError(t, err)
@@ -173,12 +187,14 @@ func TestClientDel(t *testing.T) {
 		}
 		var buf = make([]byte, 0, 4096)
 		buf = append(buf, []byte("*2\r\n$3\r\nDEL\r\n$7\r\ntestkey\r\n")...)
+		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		mockConn.EXPECT().Write(buf)
 		buf = buf[:cap(buf)]
 		mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
 			copy(b, []byte("+OK\r\n"))
 			return 5, nil
 		})
+		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
 		var err = client.Del("testkey")
 		require.NoError(t, err)

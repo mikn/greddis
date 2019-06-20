@@ -24,20 +24,22 @@ type respArray struct {
 	length  int64
 }
 
+var maxBulkSize = 512 * 1024 * 1024
+var maxBulkLen = 9 + 3
+
 // reset (ab)uses the fact that slices are pointers to arrays and contains cap + len
-// By slicing to [:0] we set len to 0, but retain cap. We keep 23 bytes at the start of the
+// By slicing to [:0] we set len to 0, but retain cap. We keep 12 bytes at the start of the
 // buffer to write the array length to (in accordance with the format). Worst case, the
 // buf that gets passed in doesn't fit all the items we want to send, then buf will
 // point to another underlying array that is bigger, thus this will result in an allocation.
 // We however correct this by using append() on origBuf and then return origBuf so the connection
 // will have this new and larger buffer and will hopefully cause less allocations over time.
 func (a *respArray) reset(buf []byte) {
-	a.origBuf = buf
-	a.origBuf = a.origBuf[:0]
-	if len(buf) < 23 { // Let's just pad so we don't panic
-		buf = append(buf, make([]byte, 23-len(buf))...)
+	a.origBuf = buf[:0]
+	if len(buf) < maxBulkLen { // Let's just pad so we don't panic
+		buf = append(buf, make([]byte, maxBulkLen-len(buf))...)
 	}
-	a.buf = buf[23:] // 23 == prefix + max int64 str length + separator
+	a.buf = buf[maxBulkLen:]
 	a.buf = a.buf[:0]
 	a.length = 0
 }

@@ -6,7 +6,6 @@ import (
 	"net"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/beorn7/perks/quantile"
@@ -31,8 +30,6 @@ type pool struct {
 	dial            func() (net.Conn, error)
 	opts            *PoolOptions
 	bufSizeQuantile bufQuantile
-	quantileMut     sync.Mutex
-	quantileValue   atomic.Value
 	targetBufSize   int
 }
 
@@ -184,7 +181,6 @@ func (p *pool) Get() (*conn, error) {
 		if c.getToBeClosed() {
 			c, err = p.Get()
 		}
-		c.setInUse(true)
 	default:
 		var conn net.Conn
 		conn, err = p.dial()
@@ -200,6 +196,8 @@ func (p *pool) Get() (*conn, error) {
 		p.connsRef = append(p.connsRef, c)
 		p.connsMut.Unlock()
 	}
+	c.setInUse(true)
+	c.conn.SetReadDeadline(time.Now().Add(p.opts.ReadTimeout))
 	return c, err
 }
 
@@ -208,7 +206,7 @@ func (p *pool) Put(c *conn) {
 	if c.getToBeClosed() {
 		return
 	}
-	// this causes 1B to be written every time you put the connection back into the pool, but no allocs on the stack
+	c.conn.SetReadDeadline(time.Time{})
 	p.bufSizeQuantile.Observe(float64(cap(c.buf)))
 	select {
 	case p.conns <- c:

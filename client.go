@@ -4,7 +4,6 @@ package greddis
 import (
 	"context"
 	"database/sql/driver"
-	"strconv"
 )
 
 // TODO Ensure we return a connection error instead of panic with nil ref when there's no connection
@@ -57,11 +56,10 @@ func (c *client) Get(key string) (*Result, error) {
 		return nil, err
 	}
 	var cmd = conn.cmd
-	cmd.addItem([]byte("GET"))
-	cmd.addItem([]byte(key))
+	cmd.add("GET").add(key)
 	conn.buf = cmd.writeTo(conn.conn)
 	var buf = conn.buf[:0]
-	buf, err = readBulkString(conn.conn, buf, c.poolOpts.ReadTimeout)
+	buf, err = readBulkString(conn.conn, buf)
 	conn.buf = buf
 	if err != nil {
 		c.pool.Put(conn)
@@ -79,17 +77,16 @@ func (c *client) Set(key string, value driver.Value, ttl int) error {
 	var val []byte
 	val, err = toBytesValue(value, conn.buf[:0])
 	if err != nil {
+		c.pool.Put(conn)
 		return err
 	}
-	conn.cmd.addItem([]byte("SET"))
-	conn.cmd.addItem([]byte(key))
-	conn.cmd.addItem(val)
+	var cmd = conn.cmd
+	cmd.add("SET").add(key).add(val)
 	if ttl > 0 {
-		conn.cmd.addItem([]byte("EX"))
-		conn.cmd.addItem([]byte(strconv.Itoa(ttl)))
+		cmd.add("EX").add(ttl)
 	}
-	conn.buf = conn.cmd.writeTo(conn.conn)
-	_, err = readSimpleString(conn.conn, conn.buf, c.poolOpts.ReadTimeout)
+	conn.buf = cmd.writeTo(conn.conn)
+	_, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(conn)
 	return err
 }
@@ -100,10 +97,9 @@ func (c *client) Del(key string) error {
 		return err
 	}
 	var cmd = conn.cmd
-	cmd.addItem([]byte("DEL"))
-	cmd.addItem([]byte(key))
+	cmd.add("DEL").add(key)
 	conn.buf = cmd.writeTo(conn.conn)
-	_, err = readSimpleString(conn.conn, conn.buf, c.poolOpts.ReadTimeout)
+	_, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(conn)
 	return err
 }

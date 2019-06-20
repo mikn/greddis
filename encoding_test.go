@@ -38,7 +38,7 @@ func TestArray(t *testing.T) {
 		require.Equal(t, 0, len(arr.origBuf))
 		require.Equal(t, 0, len(arr.buf))
 		require.Equal(t, 100, cap(arr.origBuf))
-		require.Equal(t, cap(arr.origBuf)-23, cap(arr.buf))
+		require.Equal(t, cap(arr.origBuf)-maxBulkLen, cap(arr.buf))
 	})
 	t.Run("test reset with too small buffer", func(t *testing.T) {
 		var origBuf = make([]byte, 10)
@@ -47,7 +47,7 @@ func TestArray(t *testing.T) {
 		require.Equal(t, 0, len(arr.origBuf))
 		require.Equal(t, 0, len(arr.buf))
 		require.Equal(t, 10, cap(arr.origBuf))
-		require.Equal(t, 32-23, cap(arr.buf))
+		require.Equal(t, 32-maxBulkLen, cap(arr.buf))
 	})
 	t.Run("nil array", func(t *testing.T) {
 		var origBuf = make([]byte, 100)

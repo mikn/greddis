@@ -23,7 +23,7 @@ import (
 func BenchmarkNetSingleBufIO(b *testing.B) {
 	debug.SetGCPercent(-1)
 	b.ReportAllocs()
-	var c, err = net.Dial("tcp", "172.17.0.2:6379")
+	var c, err = net.Dial("tcp", "172.16.28.2:6379")
 	var conn = c.(*net.TCPConn)
 	if err != nil {
 		fmt.Println(err)
@@ -85,7 +85,7 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 
 func BenchmarkNetSingleFunc(b *testing.B) {
 	b.ReportAllocs()
-	var conn, err = net.Dial("tcp", "172.17.0.2:6379")
+	var conn, err = net.Dial("tcp", "172.16.28.2:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -120,7 +120,7 @@ func testCall(conn net.Conn, bytes []byte) string {
 
 func BenchmarkNetSingle(b *testing.B) {
 	b.ReportAllocs()
-	var conn, err = net.Dial("tcp", "172.17.0.2:6379")
+	var conn, err = net.Dial("tcp", "172.16.28.2:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -149,7 +149,7 @@ func BenchmarkGreddisSingle(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	var err = client.Set("testkey", "blahblah", 0)
@@ -168,7 +168,7 @@ func BenchmarkGreddisSingle(b *testing.B) {
 func BenchmarkGoRedisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var client = goredis.NewClient(&goredis.Options{
-		Addr: "172.17.0.2:6379",
+		Addr: "172.16.28.2:6379",
 	})
 	client.Set("testkey", "blahblah", 0)
 	for i := 0; i < b.N; i++ {
@@ -179,7 +179,7 @@ func BenchmarkGoRedisSingle(b *testing.B) {
 
 func BenchmarkRedigoSingle(b *testing.B) {
 	b.ReportAllocs()
-	var conn, _ = redigo.Dial("tcp", "172.17.0.2:6379")
+	var conn, _ = redigo.Dial("tcp", "172.16.28.2:6379")
 	conn.Do("set", "testkey", "blahblah")
 	for i := 0; i < b.N; i++ {
 		var val, err = conn.Do("get", "testkey")
@@ -190,7 +190,7 @@ func BenchmarkRedigoSingle(b *testing.B) {
 func BenchmarkNetChanPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newChanPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newChanPool("tcp", "172.16.28.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -222,7 +222,7 @@ func BenchmarkNetChanPool(b *testing.B) {
 func BenchmarkNetSyncPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newSyncPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newSyncPool("tcp", "172.16.28.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -254,7 +254,7 @@ func BenchmarkNetSyncPool(b *testing.B) {
 func BenchmarkNetAtomicPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newAtomicPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newAtomicPool("tcp", "172.16.28.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -286,7 +286,7 @@ func BenchmarkNetAtomicPool(b *testing.B) {
 func BenchmarkNetSemPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newSemPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newSemPool("tcp", "172.16.28.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -322,8 +322,8 @@ func BenchmarkNet2Pool(b *testing.B) {
 		MaxActiveConnections: 10,
 		MaxIdleConnections:   10,
 	})
-	pool.Register("tcp", "172.17.0.2:6379")
-	var conn, err = pool.Get("tcp", "172.17.0.2:6379")
+	pool.Register("tcp", "172.16.28.2:6379")
+	var conn, err = pool.Get("tcp", "172.16.28.2:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -334,7 +334,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 	conn.ReleaseConnection()
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, _ = pool.Get("tcp", "172.17.0.2:6379")
+		conn, _ = pool.Get("tcp", "172.16.28.2:6379")
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -346,7 +346,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 		conn.ReleaseConnection()
 		s.Add(time.Now().Sub(t))
 	}
-	conn, _ = pool.Get("tcp", "172.17.0.2:6379")
+	conn, _ = pool.Get("tcp", "172.16.28.2:6379")
 	conn.Write([]byte("del testkey\r\n"))
 	conn.ReleaseConnection()
 }
@@ -358,7 +358,7 @@ func BenchmarkGreddisGet8b(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	client.Set("testkey", "blahblah", 0)
@@ -380,7 +380,7 @@ func BenchmarkGoRedisGet8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.17.0.2:6379",
+		Addr:     "172.16.28.2:6379",
 		PoolSize: 10,
 	})
 	client.Set("testkey", "blahblah", 0)
@@ -398,7 +398,7 @@ func BenchmarkRedigoGet8b(b *testing.B) {
 	var pool = redigo.Pool{
 		MaxIdle:   10,
 		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.17.0.2:6379") },
+		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
 	}
 	var conn = pool.Get()
 	conn.Do("set", "testkey", "blahblah")
@@ -432,7 +432,7 @@ func BenchmarkGreddisSet8b(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	var randStr = RandStringBytes(8)
@@ -449,7 +449,7 @@ func BenchmarkGoRedisSet8b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.17.0.2:6379",
+		Addr:     "172.16.28.2:6379",
 		PoolSize: 10,
 	})
 	var randStr = RandStringBytes(8)
@@ -467,7 +467,7 @@ func BenchmarkRedigoSet8b(b *testing.B) {
 	var pool = redigo.Pool{
 		MaxIdle:   10,
 		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.17.0.2:6379") },
+		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
 	}
 	var randStr = RandStringBytes(8)
 	for i := 0; i < b.N; i++ {
@@ -486,7 +486,7 @@ func BenchmarkGreddisGet5000b(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	var str = RandStringBytes(5000)
@@ -506,7 +506,7 @@ func BenchmarkGoRedisGet5000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.17.0.2:6379",
+		Addr:     "172.16.28.2:6379",
 		PoolSize: 10,
 	})
 	client.Set("testkey", RandStringBytes(5000), 0)
@@ -524,7 +524,7 @@ func BenchmarkRedigoGet5000b(b *testing.B) {
 	var pool = redigo.Pool{
 		MaxIdle:   10,
 		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.17.0.2:6379") },
+		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
 	}
 	var conn = pool.Get()
 	conn.Do("set", "testkey", RandStringBytes(5000))
@@ -548,7 +548,7 @@ func BenchmarkGreddisSet5000b(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	var randStr = RandStringBytes(5000)
@@ -565,7 +565,7 @@ func BenchmarkGoRedisSet5000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.17.0.2:6379",
+		Addr:     "172.16.28.2:6379",
 		PoolSize: 10,
 	})
 	var randStr = RandStringBytes(5000)
@@ -583,7 +583,7 @@ func BenchmarkRedigoSet5000b(b *testing.B) {
 	var pool = redigo.Pool{
 		MaxIdle:   10,
 		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.17.0.2:6379") },
+		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
 	}
 	var randStr = RandStringBytes(5000)
 	for i := 0; i < b.N; i++ {
@@ -602,7 +602,7 @@ func BenchmarkGreddisGet50000b(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	var str = RandStringBytes(50000)
@@ -626,7 +626,7 @@ func BenchmarkGoRedisGet50000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.17.0.2:6379",
+		Addr:     "172.16.28.2:6379",
 		PoolSize: 10,
 	})
 	client.Set("testkey", RandStringBytes(50000), 0)
@@ -644,7 +644,7 @@ func BenchmarkRedigoGet50000b(b *testing.B) {
 	var pool = redigo.Pool{
 		MaxIdle:   10,
 		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.17.0.2:6379") },
+		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
 	}
 	var conn = pool.Get()
 	conn.Do("set", "testkey", RandStringBytes(50000))
@@ -668,7 +668,7 @@ func BenchmarkGreddisSet50000b(b *testing.B) {
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
 		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.17.0.2:6379")
+			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
 	var randStr = RandStringBytes(50000)
@@ -685,7 +685,7 @@ func BenchmarkGoRedisSet50000b(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
 	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.17.0.2:6379",
+		Addr:     "172.16.28.2:6379",
 		PoolSize: 10,
 	})
 	var randStr = RandStringBytes(50000)
@@ -703,7 +703,7 @@ func BenchmarkRedigoSet50000b(b *testing.B) {
 	var pool = redigo.Pool{
 		MaxIdle:   10,
 		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.17.0.2:6379") },
+		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
 	}
 	var randStr = RandStringBytes(50000)
 	for i := 0; i < b.N; i++ {
