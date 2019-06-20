@@ -25,7 +25,7 @@ func testingPool(t *testing.T) (*pool, *mock_net.MockConn) {
 	var connMock = mock_net.NewMockConn(ctrl)
 	return newPool(ctx, &PoolOptions{
 		TrimOptions: &TrimOptions{Interval: -1, BufQuantileTargets: []float64{0.8, 0.9, 0.99, 1}},
-		Dial: func() (net.Conn, error) {
+		Dial: func(ctx context.Context) (net.Conn, error) {
 			return connMock, nil
 		},
 		MaxIdle: 1,
@@ -59,10 +59,11 @@ func TestPool(t *testing.T) {
 		require.Equal(t, 500*time.Millisecond, pool.opts.TrimOptions.Interval)
 	})
 	t.Run("get without conns in pool", func(t *testing.T) {
+		var ctx = context.Background()
 		var pool, connMock = testingPool(t)
 		connMock.EXPECT().SetReadDeadline(gomock.Any())
 		require.Equal(t, 0, len(pool.conns))
-		var conn, err = pool.Get()
+		var conn, err = pool.Get(ctx)
 		require.NoError(t, err)
 		require.Equal(t, connMock, conn.conn)
 	})
@@ -78,65 +79,70 @@ func TestPool(t *testing.T) {
 		returns = append(returns, retType{successConn, nil})
 		var pool = newPool(ctx, &PoolOptions{
 			TrimOptions: &TrimOptions{Interval: -1},
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				var ret retType
 				ret, returns = returns[0], returns[1:]
 				return ret.conn, ret.err
 			},
 		}).(*pool)
 		require.Equal(t, 0, len(pool.conns))
-		var _, err = pool.Get()
+		var _, err = pool.Get(ctx)
 		require.Error(t, err)
-		var _, err2 = pool.Get()
+		var _, err2 = pool.Get(ctx)
 		require.NoError(t, err2)
 	})
 	t.Run("put without conns in pool", func(t *testing.T) {
+		var ctx = context.Background()
 		var pool, _ = testingPool(t)
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		var c = newConn(mockConn, pool.opts.InitialBufSize)
-		pool.Put(c)
+		pool.Put(ctx, c)
 		require.Equal(t, 1, len(pool.conns))
 	})
 	t.Run("put to be GCd connection back in pool", func(t *testing.T) {
+		var ctx = context.Background()
 		var pool, _ = testingPool(t)
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		var c = newConn(mockConn, pool.opts.InitialBufSize)
 		c.setToBeClosed()
-		pool.Put(c)
+		pool.Put(ctx, c)
 		require.Equal(t, 0, len(pool.conns))
 	})
 	t.Run("put exceeding max size conns in pool", func(t *testing.T) {
+		var ctx = context.Background()
 		var pool, _ = testingPool(t)
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		mockConn.EXPECT().SetReadDeadline(gomock.Any()).Times(3)
 		var c = newConn(mockConn, pool.opts.InitialBufSize)
-		pool.Put(c)
-		pool.Put(c)
-		pool.Put(c)
+		pool.Put(ctx, c)
+		pool.Put(ctx, c)
+		pool.Put(ctx, c)
 		require.Equal(t, 2, len(pool.conns))
 	})
 	t.Run("get with conns in pool", func(t *testing.T) {
+		var ctx = context.Background()
 		var pool, _ = testingPool(t)
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		mockConn.EXPECT().SetReadDeadline(gomock.Any()).Times(2)
 		var c = newConn(mockConn, pool.opts.InitialBufSize)
-		pool.Put(c)
+		pool.Put(ctx, c)
 		require.Equal(t, 1, len(pool.conns))
-		var conn, err = pool.Get()
+		var conn, err = pool.Get(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 0, len(pool.conns))
 		require.Equal(t, mockConn, conn.conn)
 	})
 	t.Run("get conn from pool with one to be GCd", func(t *testing.T) {
+		var ctx = context.Background()
 		var pool, mockConn1 = testingPool(t)
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
@@ -144,10 +150,10 @@ func TestPool(t *testing.T) {
 		var c = newConn(mockConn2, pool.opts.InitialBufSize)
 		mockConn1.EXPECT().SetReadDeadline(gomock.Any()).Times(2)
 		mockConn2.EXPECT().SetReadDeadline(gomock.Any()).Times(1)
-		pool.Put(c)
+		pool.Put(ctx, c)
 		require.Equal(t, 1, len(pool.conns))
 		c.setToBeClosed()
-		var conn, err = pool.Get()
+		var conn, err = pool.Get(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 0, len(pool.conns))
 		require.Equal(t, mockConn1, conn.conn)
@@ -222,10 +228,10 @@ func TestTrimming(t *testing.T) {
 		var pool, mockConn = testingPool(t)
 		mockConn.EXPECT().Close()
 		mockConn.EXPECT().SetReadDeadline(gomock.Any()).Times(4)
-		var p1, _ = pool.Get()
-		var p2, _ = pool.Get()
-		pool.Put(p1)
-		pool.Put(p2)
+		var p1, _ = pool.Get(ctx)
+		var p2, _ = pool.Get(ctx)
+		pool.Put(ctx, p1)
+		pool.Put(ctx, p2)
 		var tick = make(chan time.Time)
 		require.Equal(t, 2, len(pool.conns))
 		go connTrimming(ctx, tick, pool)
@@ -238,7 +244,7 @@ func TestTrimming(t *testing.T) {
 	t.Run("failed dial don't break things", func(t *testing.T) {
 		var ctx = context.Background()
 		var pool, _ = testingPool(t)
-		pool.dial = func() (net.Conn, error) { return nil, errors.New("blah") }
+		pool.dial = func(ctx context.Context) (net.Conn, error) { return nil, errors.New("blah") }
 		var tick = make(chan time.Time)
 		go connTrimming(ctx, tick, pool)
 		tick <- time.Now()
@@ -251,13 +257,13 @@ func TestTrimming(t *testing.T) {
 		var ctx = context.Background()
 		var pool, mockConn = testingPool(t)
 		mockConn.EXPECT().SetReadDeadline(gomock.Any()).Times(2)
-		var p1, _ = pool.Get()
+		var p1, _ = pool.Get(ctx)
 		var newBuf = make([]byte, 5376)
 		p1.buf = p1.buf[:0]
 		for _, b := range newBuf {
 			p1.buf = append(p1.buf, b)
 		}
-		pool.Put(p1)
+		pool.Put(ctx, p1)
 		require.Equal(t, 5376, cap(p1.buf))
 		var tick = make(chan time.Time)
 		go connTrimming(ctx, tick, pool)

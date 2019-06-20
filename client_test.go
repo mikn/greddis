@@ -24,12 +24,12 @@ func TestClientGet(t *testing.T) {
 	t.Run("Fail get pool connection", func(t *testing.T) {
 		var ctx = context.Background()
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return nil, errors.New("EOF")
 			},
 		}
 		var client = greddis.NewClient(ctx, opts)
-		var res, err = client.Get("testkey")
+		var res, err = client.Get(ctx, "testkey")
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -39,7 +39,7 @@ func TestClientGet(t *testing.T) {
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
@@ -51,7 +51,7 @@ func TestClientGet(t *testing.T) {
 		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
-		var res, err = client.Get("testkey")
+		var res, err = client.Get(ctx, "testkey")
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -61,7 +61,7 @@ func TestClientGet(t *testing.T) {
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
@@ -76,7 +76,7 @@ func TestClientGet(t *testing.T) {
 			return 18, nil
 		})
 		var client = greddis.NewClient(ctx, opts)
-		var res, err = client.Get("testkey")
+		var res, err = client.Get(ctx, "testkey")
 		var str string
 		res.Scan(&str)
 		require.NoError(t, err)
@@ -88,12 +88,12 @@ func TestClientSet(t *testing.T) {
 	t.Run("fail on get pool connection", func(t *testing.T) {
 		var ctx = context.Background()
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return nil, errors.New("EOF")
 			},
 		}
 		var client = greddis.NewClient(ctx, opts)
-		var err = client.Set("testkey", "test string", 0)
+		var err = client.Set(ctx, "testkey", "test string", 0)
 		require.Error(t, err)
 	})
 	t.Run("fail on get value", func(t *testing.T) {
@@ -104,13 +104,13 @@ func TestClientSet(t *testing.T) {
 		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
 		var client = greddis.NewClient(ctx, opts)
 		var invalid struct{}
-		var err = client.Set("testkey", invalid, 0)
+		var err = client.Set(ctx, "testkey", invalid, 0)
 		require.Error(t, err)
 	})
 	t.Run("set string", func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestClientSet(t *testing.T) {
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
@@ -134,7 +134,7 @@ func TestClientSet(t *testing.T) {
 		})
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
-		var err = client.Set("testkey", "test string", 0)
+		var err = client.Set(ctx, "testkey", "test string", 0)
 		require.NoError(t, err)
 	})
 	t.Run("set string with TTL", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestClientSet(t *testing.T) {
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
@@ -158,7 +158,7 @@ func TestClientSet(t *testing.T) {
 		})
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
-		var err = client.Set("testkey", "test string", 1)
+		var err = client.Set(ctx, "testkey", "test string", 1)
 		require.NoError(t, err)
 	})
 }
@@ -167,12 +167,12 @@ func TestClientDel(t *testing.T) {
 	t.Run("fail on get pool connection", func(t *testing.T) {
 		var ctx = context.Background()
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return nil, errors.New("EOF")
 			},
 		}
 		var client = greddis.NewClient(ctx, opts)
-		var err = client.Del("testkey")
+		var err = client.Del(ctx, "testkey")
 		require.Error(t, err)
 	})
 	t.Run("delete key", func(t *testing.T) {
@@ -181,7 +181,7 @@ func TestClientDel(t *testing.T) {
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
 		var opts = &greddis.PoolOptions{
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
@@ -196,7 +196,7 @@ func TestClientDel(t *testing.T) {
 		})
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
 		var client = greddis.NewClient(ctx, opts)
-		var err = client.Del("testkey")
+		var err = client.Del(ctx, "testkey")
 		require.NoError(t, err)
 	})
 }

@@ -18,8 +18,8 @@ type bufQuantile interface {
 }
 
 type internalPool interface {
-	Get() (*conn, error)
-	Put(*conn)
+	Get(context.Context) (*conn, error)
+	Put(context.Context, *conn)
 }
 
 type pool struct {
@@ -27,7 +27,7 @@ type pool struct {
 	connsRef        []*conn
 	connsMut        sync.Mutex
 	maxSize         int
-	dial            func() (net.Conn, error)
+	dial            func(context.Context) (net.Conn, error)
 	opts            *PoolOptions
 	bufSizeQuantile bufQuantile
 	targetBufSize   int
@@ -109,12 +109,27 @@ func connTrimming(ctx context.Context, tick <-chan time.Time, pool *pool) {
 
 // PoolOptions is specified to tune the connection pool for the client
 type PoolOptions struct {
-	MaxSize         int                      // The maximum size of the connection pool. If reached, it will block the next client request until a connection is free
-	MaxIdle         int                      // How many connections that can remain idle in the pool, will otherwise be reaped by the trimming thread
-	ReadTimeout     time.Duration            // Default is 500ms
-	Dial            func() (net.Conn, error) // a function that returns an established TCP connection
-	InitialBufSize  int                      // The initial buffer size to associate with the connection, this is also the minimum buffer size allowed when creating new connections, but if the trimming thread is enabled and the percentile target returns a higher value, this will be used for any subsequent connections
-	TrimOptions     *TrimOptions             // fine-tuning options for the trimming thread, this should usually not be needed
+	// MaxSize is the maximum size of the connection pool. If reached, it will
+	// block the next client request until a connection is free
+	MaxSize int
+	// MaxIdle How many connections that can remain idle in the pool, will
+	// otherwise be reaped by the trimming thread
+	MaxIdle int
+	// How long before reads time out
+	// Default: 500 ms
+	ReadTimeout time.Duration
+	// Dial is a function that returns an established TCP connection
+	Dial func(context.Context) (net.Conn, error)
+	// InitialBufSize is the initial buffer size to associate with the
+	// connection, this is also the minimum buffer size allowed when creating
+	// new connections, but if the trimming thread is enabled and the
+	// percentile target returns a higher value, this will be used for
+	// any subsequent connections
+	// Default: 4096 bytes
+	InitialBufSize int
+	// TrimOptions are fine-tuning options for the trimming thread, this
+	// should usually not be needed
+	TrimOptions     *TrimOptions
 	bufSizeQuantile bufQuantile
 }
 
@@ -172,21 +187,23 @@ func (p *pool) calcTargetBufSize(q bufQuantile, target float64) int {
 	return p.opts.InitialBufSize
 }
 
-func (p *pool) Get() (c *conn, err error) {
+func (p *pool) Get(ctx context.Context) (*conn, error) {
+	var c *conn // don't move to exit vars - results in alloc for some reason
+	var err error
 	select {
 	case c = <-p.conns:
 		if c.getToBeClosed() {
-			c, err = p.Get()
+			c, err = p.Get(ctx)
 		}
 	default:
-		conn, err := p.dial()
+		conn, err := p.dial(ctx)
 		if err != nil {
 			return nil, err
 		}
 		c = newConn(conn, p.targetBufSize)
 		// when result is Scanned, put conn back to pool
 		c.res.finish = func() {
-			p.Put(c)
+			p.Put(ctx, c)
 		}
 		p.connsMut.Lock()
 		p.connsRef = append(p.connsRef, c)
@@ -197,7 +214,7 @@ func (p *pool) Get() (c *conn, err error) {
 	return c, err
 }
 
-func (p *pool) Put(c *conn) {
+func (p *pool) Put(ctx context.Context, c *conn) {
 	c.setInUse(false)
 	if c.getToBeClosed() {
 		return

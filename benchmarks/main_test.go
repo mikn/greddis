@@ -145,21 +145,21 @@ func BenchmarkGreddisSingle(b *testing.B) {
 	var ctx = context.Background()
 	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
+		Dial: func(ctx context.Context) (net.Conn, error) {
 			return net.Dial("tcp", "172.16.28.2:6379")
 		},
 	})
-	var err = client.Set("testkey", "blahblah", 0)
+	var err = client.Set(ctx, "testkey", "blahblah", 0)
 	if err != nil {
 		panic(err)
 	}
 	var buf = &bytes.Buffer{}
 	for i := 0; i < b.N; i++ {
-		var res, _ = client.Get("testkey")
+		var res, _ = client.Get(ctx, "testkey")
 		res.Scan(buf)
 		buf.Reset()
 	}
-	client.Del("testkey")
+	client.Del(ctx, "testkey")
 }
 
 func BenchmarkGoRedisSingle(b *testing.B) {
@@ -355,20 +355,20 @@ func greddisGet(addr string, key string, value string) func(*testing.B) {
 		var ctx = context.Background()
 		var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 			MaxSize: 10,
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return net.Dial("tcp", addr)
 			},
 		})
-		client.Set(key, value, 0)
+		client.Set(ctx, key, value, 0)
 		var buf = &bytes.Buffer{}
 		for i := 0; i < b.N; i++ {
 			var t = time.Now()
-			var res, _ = client.Get(key)
+			var res, _ = client.Get(ctx, key)
 			res.Scan(buf)
 			buf.Reset()
 			s.Add(time.Now().Sub(t))
 		}
-		client.Del(key)
+		client.Del(ctx, key)
 	}
 }
 
@@ -423,17 +423,17 @@ func greddisSet(addr string, key string, value string) func(*testing.B) {
 		var ctx = context.Background()
 		var client = greddis.NewClient(ctx, &greddis.PoolOptions{
 			MaxSize: 10,
-			Dial: func() (net.Conn, error) {
+			Dial: func(ctx context.Context) (net.Conn, error) {
 				return net.Dial("tcp", addr)
 			},
 		})
 		var strPtr = &value
 		for i := 0; i < b.N; i++ {
 			var t = time.Now()
-			client.Set(key, strPtr, 0)
+			client.Set(ctx, key, strPtr, 0)
 			s.Add(time.Now().Sub(t))
 		}
-		client.Del(key)
+		client.Del(ctx, key)
 	}
 }
 
