@@ -351,71 +351,140 @@ func BenchmarkNet2Pool(b *testing.B) {
 	conn.ReleaseConnection()
 }
 
-func BenchmarkGreddisGet8b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	client.Set("testkey", "blahblah", 0)
-	var buf = &bytes.Buffer{}
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		var res, err = client.Get("testkey")
-		if err != nil {
-			fmt.Println(err.Error())
+func greddisGet(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var s = stats.AddStats(b, 10)
+		var ctx = context.Background()
+		var client = greddis.NewClient(ctx, &greddis.PoolOptions{
+			MaxSize: 10,
+			Dial: func() (net.Conn, error) {
+				return net.Dial("tcp", addr)
+			},
+		})
+		client.Set(key, value, 0)
+		var buf = &bytes.Buffer{}
+		for i := 0; i < b.N; i++ {
+			var t = time.Now()
+			var res, _ = client.Get(key)
+			res.Scan(buf)
+			buf.Reset()
+			s.Add(time.Now().Sub(t))
 		}
-		res.Scan(buf)
-		buf.Reset()
-		s.Add(time.Now().Sub(t))
+		client.Del(key)
 	}
-	client.Del("testkey")
 }
 
-func BenchmarkGoRedisGet8b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.16.28.2:6379",
-		PoolSize: 10,
-	})
-	client.Set("testkey", "blahblah", 0)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Get("testkey").String()
-		s.Add(time.Now().Sub(t))
+func goredisGet(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var s = stats.AddStats(b, 10)
+		var client = goredis.NewClient(&goredis.Options{
+			Addr:     addr,
+			PoolSize: 10,
+		})
+		client.Set(key, value, 0)
+		for i := 0; i < b.N; i++ {
+			var t = time.Now()
+			client.Get(key).String()
+			s.Add(time.Now().Sub(t))
+		}
+		client.Del(key)
 	}
-	client.Del("testkey")
 }
 
-func BenchmarkRedigoGet8b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var pool = redigo.Pool{
-		MaxIdle:   10,
-		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
-	}
-	var conn = pool.Get()
-	conn.Do("set", "testkey", "blahblah")
-	conn.Close()
-	var buf = make([][]byte, 1)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		conn = pool.Get()
-		var val, _ = redigo.Values(conn.Do("get", "testkey"))
-		redigo.Scan(val, &buf)
+func redigoGet(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var s = stats.AddStats(b, 10)
+		var pool = redigo.Pool{
+			MaxIdle:   10,
+			MaxActive: 10,
+			Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", addr) },
+		}
+		var conn = pool.Get()
+		conn.Do("set", key, value)
 		conn.Close()
-		s.Add(time.Now().Sub(t))
-		buf[0] = buf[0][:0]
+		var buf = make([][]byte, 1)
+		for i := 0; i < b.N; i++ {
+			var t = time.Now()
+			conn = pool.Get()
+			var val, _ = redigo.Values(conn.Do("get", key))
+			redigo.Scan(val, &buf)
+			conn.Close()
+			s.Add(time.Now().Sub(t))
+			buf[0] = buf[0][:0]
+		}
+		conn.Do("del", key)
+	}
+}
+
+func greddisSet(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var s = stats.AddStats(b, 10)
+		var ctx = context.Background()
+		var client = greddis.NewClient(ctx, &greddis.PoolOptions{
+			MaxSize: 10,
+			Dial: func() (net.Conn, error) {
+				return net.Dial("tcp", addr)
+			},
+		})
+		var strPtr = &value
+		for i := 0; i < b.N; i++ {
+			var t = time.Now()
+			client.Set(key, strPtr, 0)
+			s.Add(time.Now().Sub(t))
+		}
+		client.Del(key)
+	}
+}
+
+func goredisSet(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var s = stats.AddStats(b, 10)
+		var client = goredis.NewClient(&goredis.Options{
+			Addr:     addr,
+			PoolSize: 10,
+		})
+		for i := 0; i < b.N; i++ {
+			var t = time.Now()
+			client.Set(key, value, 0)
+			s.Add(time.Now().Sub(t))
+		}
+		client.Del(key)
+	}
+}
+
+func redigoSet(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var s = stats.AddStats(b, 10)
+		var pool = redigo.Pool{
+			MaxIdle:   10,
+			MaxActive: 10,
+			Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", addr) },
+		}
+		for i := 0; i < b.N; i++ {
+			var t = time.Now()
+			var conn = pool.Get()
+			conn.Do("set", key, value)
+			conn.Close()
+			s.Add(time.Now().Sub(t))
+		}
+		var conn = pool.Get()
+		conn.Do("del", key)
+		conn.Close()
 	}
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+type testFunc struct {
+	name string
+	f    func(string, string, string) func(*testing.B)
+}
 
 func RandStringBytes(n int) string {
 	b := make([]byte, n)
@@ -425,293 +494,23 @@ func RandStringBytes(n int) string {
 	return string(b)
 }
 
-func BenchmarkGreddisSet8b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	var randStr = RandStringBytes(8)
-	var strPtr = &randStr
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Set("testkey", strPtr, 0)
-		s.Add(time.Now().Sub(t))
+func BenchmarkDrivers(b *testing.B) {
+	var funcs = []testFunc{
+		testFunc{name: "GreddisGet", f: greddisGet},
+		testFunc{name: "GoRedisGet", f: goredisGet},
+		testFunc{name: "RedigoGet", f: redigoGet},
+		testFunc{name: "GreddisSet", f: greddisSet},
+		testFunc{name: "GoRedisSet", f: goredisSet},
+		testFunc{name: "RedigoSet", f: redigoSet},
 	}
-	client.Del("testkey")
-}
-
-func BenchmarkGoRedisSet8b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.16.28.2:6379",
-		PoolSize: 10,
-	})
-	var randStr = RandStringBytes(8)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Set("testkey", randStr, 0)
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkRedigoSet8b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var pool = redigo.Pool{
-		MaxIdle:   10,
-		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
-	}
-	var randStr = RandStringBytes(8)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		var conn = pool.Get()
-		conn.Do("set", "testkey", randStr)
-		conn.Close()
-		s.Add(time.Now().Sub(t))
-	}
-}
-
-func BenchmarkGreddisGet5000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	var str = RandStringBytes(5000)
-	client.Set("testkey", str, 0)
-	var buf = &bytes.Buffer{}
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		var res, _ = client.Get("testkey")
-		res.Scan(buf)
-		s.Add(time.Now().Sub(t))
-		buf.Reset()
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkGoRedisGet5000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.16.28.2:6379",
-		PoolSize: 10,
-	})
-	client.Set("testkey", RandStringBytes(5000), 0)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Get("testkey").String()
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkRedigoGet5000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var pool = redigo.Pool{
-		MaxIdle:   10,
-		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
-	}
-	var conn = pool.Get()
-	conn.Do("set", "testkey", RandStringBytes(5000))
-	conn.Close()
-	var buf = make([][]byte, 1)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		conn = pool.Get()
-		var val, _ = redigo.Values(conn.Do("get", "testkey"))
-		redigo.Scan(val, &buf)
-		conn.Close()
-		s.Add(time.Now().Sub(t))
-		buf[0] = buf[0][:0]
-	}
-}
-
-func BenchmarkGreddisSet5000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	var randStr = RandStringBytes(5000)
-	var strPtr = &randStr
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Set("testkey", strPtr, 0)
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkGoRedisSet5000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.16.28.2:6379",
-		PoolSize: 10,
-	})
-	var randStr = RandStringBytes(5000)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Set("testkey", randStr, 0)
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkRedigoSet5000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var pool = redigo.Pool{
-		MaxIdle:   10,
-		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
-	}
-	var randStr = RandStringBytes(5000)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		var conn = pool.Get()
-		conn.Do("set", "testkey", randStr)
-		conn.Close()
-		s.Add(time.Now().Sub(t))
-	}
-}
-
-func BenchmarkGreddisGet50000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	var str = RandStringBytes(50000)
-	client.Set("testkey", str, 0)
-	var buf = &bytes.Buffer{}
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		var res, err = client.Get("testkey")
-		if err != nil {
-			fmt.Println(err)
-			break
+	var sizes = []int{8, 1000, 5000, 50000, 1000000}
+	for _, s := range sizes {
+		for _, f := range funcs {
+			b.Run(
+				fmt.Sprintf("%s%db", f.name, s),
+				f.f("172.16.28.2:6379", "testkey", RandStringBytes(s)),
+			)
 		}
-		res.Scan(buf)
-		s.Add(time.Now().Sub(t))
-		buf.Reset()
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkGoRedisGet50000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.16.28.2:6379",
-		PoolSize: 10,
-	})
-	client.Set("testkey", RandStringBytes(50000), 0)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Get("testkey").String()
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkRedigoGet50000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var pool = redigo.Pool{
-		MaxIdle:   10,
-		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
-	}
-	var conn = pool.Get()
-	conn.Do("set", "testkey", RandStringBytes(50000))
-	conn.Close()
-	var buf = make([][]byte, 1)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		conn = pool.Get()
-		var val, _ = redigo.Values(conn.Do("get", "testkey"))
-		redigo.Scan(val, &buf)
-		conn.Close()
-		s.Add(time.Now().Sub(t))
-		buf[0] = buf[0][:0]
-	}
-}
-
-func BenchmarkGreddisSet50000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func() (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	var randStr = RandStringBytes(50000)
-	var strPtr = &randStr
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Set("testkey", strPtr, 0)
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkGoRedisSet50000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var client = goredis.NewClient(&goredis.Options{
-		Addr:     "172.16.28.2:6379",
-		PoolSize: 10,
-	})
-	var randStr = RandStringBytes(50000)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		client.Set("testkey", randStr, 0)
-		s.Add(time.Now().Sub(t))
-	}
-	client.Del("testkey")
-}
-
-func BenchmarkRedigoSet50000b(b *testing.B) {
-	b.ReportAllocs()
-	var s = stats.AddStats(b, 10)
-	var pool = redigo.Pool{
-		MaxIdle:   10,
-		MaxActive: 10,
-		Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", "172.16.28.2:6379") },
-	}
-	var randStr = RandStringBytes(50000)
-	for i := 0; i < b.N; i++ {
-		var t = time.Now()
-		var conn = pool.Get()
-		conn.Do("set", "testkey", randStr)
-		conn.Close()
-		s.Add(time.Now().Sub(t))
 	}
 }
 

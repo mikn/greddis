@@ -28,8 +28,8 @@ func parseBulkString(r io.Reader, buf []byte) ([]byte, error) {
 		buf = newBuf[:len(buf)-lenSize]
 	} else {
 		copy(buf, buf[lenSize:])
+		buf = buf[:len(buf)-lenSize] // let's remove the size prefix before comparing
 	}
-	buf = buf[:len(buf)-lenSize] // let's remove the size prefix before comparing
 	if len(buf) < size {
 		var readBuf = buf[len(buf):size] // out of range
 		_, err = io.ReadFull(r, readBuf)
