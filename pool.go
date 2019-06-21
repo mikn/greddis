@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"net"
+	"net/url"
 	"sort"
 	"sync"
 	"time"
@@ -107,6 +108,8 @@ func connTrimming(ctx context.Context, tick <-chan time.Time, pool *pool) {
 	}
 }
 
+type dialFunc func(context.Context) (net.Conn, error)
+
 // PoolOptions is specified to tune the connection pool for the client
 type PoolOptions struct {
 	// MaxSize is the maximum size of the connection pool. If reached, it will
@@ -114,12 +117,16 @@ type PoolOptions struct {
 	MaxSize int
 	// MaxIdle How many connections that can remain idle in the pool, will
 	// otherwise be reaped by the trimming thread
+	// Default: 5
 	MaxIdle int
 	// How long before reads time out
 	// Default: 500 ms
 	ReadTimeout time.Duration
-	// Dial is a function that returns an established TCP connection
-	Dial func(context.Context) (net.Conn, error)
+	// URL is the protocol, address and database selection concatenated into
+	// a URL format. Inspired by DSN.
+	URL string
+	// Dial is a function that returns an established net.Conn
+	Dial dialFunc
 	// InitialBufSize is the initial buffer size to associate with the
 	// connection, this is also the minimum buffer size allowed when creating
 	// new connections, but if the trimming thread is enabled and the
@@ -127,19 +134,42 @@ type PoolOptions struct {
 	// any subsequent connections
 	// Default: 4096 bytes
 	InitialBufSize int
-	// TrimOptions are fine-tuning options for the trimming thread, this
+	// TrimOptions are fine-tuning options for the trimming go routine, this
 	// should usually not be needed
 	TrimOptions     *TrimOptions
 	bufSizeQuantile bufQuantile
 }
 
-func newPool(ctx context.Context, opts *PoolOptions) internalPool {
+func createDial(rawURL string) (dialFunc, error) {
+	url, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (net.Conn, error) {
+		return net.Dial(url.Scheme, url.Host)
+	}, nil
+}
+
+func newPool(ctx context.Context, opts *PoolOptions) (internalPool, error) {
 	opts.TrimOptions = initTrimOptions(opts.TrimOptions)
 	if opts.InitialBufSize < 1 {
 		opts.InitialBufSize = 4096
 	}
 	if opts.ReadTimeout == 0 {
 		opts.ReadTimeout = 500 * time.Millisecond
+	}
+	if opts.Dial != nil && opts.URL != "" {
+		return nil, ErrOptsDialAndURL
+	}
+	if opts.URL != "" {
+		dial, err := createDial(opts.URL)
+		if err != nil {
+			return nil, err
+		}
+		opts.Dial = dial
+	}
+	if opts.MaxSize < 1 {
+		opts.MaxSize = 5
 	}
 	p := &pool{
 		conns:           make(chan *conn, opts.MaxSize),
@@ -154,7 +184,7 @@ func newPool(ctx context.Context, opts *PoolOptions) internalPool {
 		go connTrimming(ctx, time.Tick(opts.TrimOptions.Interval), p)
 
 	}
-	return p
+	return p, nil
 }
 
 // calcTargetBufSize takes a quantile and selects a sane new target []byte buffer size for connections in the pool

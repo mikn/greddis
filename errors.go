@@ -19,3 +19,6 @@ var ErrConnWrite = errors.New("Received error whilst writing to connection")
 
 // ErrConnDial error during dial
 var ErrConnDial = errors.New("Received error whilst establishing connection")
+
+// ErrOptsDialAndURL cannot combine both dial and URL for pool options
+var ErrOptsDialAndURL = errors.New("Both Dial and URL is set, can only set one")

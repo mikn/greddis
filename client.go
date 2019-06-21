@@ -31,11 +31,15 @@ type Client interface {
 }
 
 // NewClient returns a client with the options specified
-func NewClient(ctx context.Context, opts *PoolOptions) Client {
-	return &client{
-		pool:     newPool(ctx, opts),
-		poolOpts: opts,
+func NewClient(ctx context.Context, opts *PoolOptions) (Client, error) {
+	pool, err := newPool(ctx, opts)
+	if err != nil {
+		return nil, err
 	}
+	return &client{
+		pool:     pool,
+		poolOpts: opts,
+	}, nil
 }
 
 type putConn struct {

@@ -14,10 +14,41 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	var ctx = context.Background()
-	var opts = &greddis.PoolOptions{}
-	var client = greddis.NewClient(ctx, opts)
-	require.NotNil(t, client)
+	t.Run("No error", func(t *testing.T) {
+		ctx := context.Background()
+		opts := &greddis.PoolOptions{}
+		client, err := greddis.NewClient(ctx, opts)
+		require.Nil(t, err)
+		require.NotNil(t, client)
+	})
+	t.Run("both dial and url defined", func(t *testing.T) {
+		ctx := context.Background()
+		opts := &greddis.PoolOptions{
+			Dial: func(ctx context.Context) (net.Conn, error) { return nil, nil },
+			URL:  "tcp://hey",
+		}
+		client, err := greddis.NewClient(ctx, opts)
+		require.Error(t, err, greddis.ErrOptsDialAndURL)
+		require.Nil(t, client)
+	})
+	t.Run("Correct URL", func(t *testing.T) {
+		ctx := context.Background()
+		opts := &greddis.PoolOptions{
+			URL: "tcp://hello",
+		}
+		client, err := greddis.NewClient(ctx, opts)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+	})
+	t.Run("malformed URL", func(t *testing.T) {
+		ctx := context.Background()
+		opts := &greddis.PoolOptions{
+			URL: "blah@@$%/////",
+		}
+		client, err := greddis.NewClient(ctx, opts)
+		require.Error(t, err)
+		require.Nil(t, client)
+	})
 }
 
 func TestClientGet(t *testing.T) {
@@ -28,8 +59,8 @@ func TestClientGet(t *testing.T) {
 				return nil, errors.New("EOF")
 			},
 		}
-		var client = greddis.NewClient(ctx, opts)
-		var res, err = client.Get(ctx, "testkey")
+		client, err := greddis.NewClient(ctx, opts)
+		res, err := client.Get(ctx, "testkey")
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -50,8 +81,8 @@ func TestClientGet(t *testing.T) {
 		mockConn.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
 		mockConn.EXPECT().SetReadDeadline(gomock.Any())
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
-		var client = greddis.NewClient(ctx, opts)
-		var res, err = client.Get(ctx, "testkey")
+		client, err := greddis.NewClient(ctx, opts)
+		res, err := client.Get(ctx, "testkey")
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -75,8 +106,8 @@ func TestClientGet(t *testing.T) {
 			copy(b, []byte("$11\r\ntest string\r\n"))
 			return 18, nil
 		})
-		var client = greddis.NewClient(ctx, opts)
-		var res, err = client.Get(ctx, "testkey")
+		client, err := greddis.NewClient(ctx, opts)
+		res, err := client.Get(ctx, "testkey")
 		var str string
 		res.Scan(&str)
 		require.NoError(t, err)
@@ -92,8 +123,8 @@ func TestClientSet(t *testing.T) {
 				return nil, errors.New("EOF")
 			},
 		}
-		var client = greddis.NewClient(ctx, opts)
-		var err = client.Set(ctx, "testkey", "test string", 0)
+		client, err := greddis.NewClient(ctx, opts)
+		err = client.Set(ctx, "testkey", "test string", 0)
 		require.Error(t, err)
 	})
 	t.Run("fail on get value", func(t *testing.T) {
@@ -108,9 +139,9 @@ func TestClientSet(t *testing.T) {
 				return mockConn, nil
 			},
 		}
-		var client = greddis.NewClient(ctx, opts)
+		client, err := greddis.NewClient(ctx, opts)
 		var invalid struct{}
-		var err = client.Set(ctx, "testkey", invalid, 0)
+		err = client.Set(ctx, "testkey", invalid, 0)
 		require.Error(t, err)
 	})
 	t.Run("set string", func(t *testing.T) {
@@ -133,8 +164,8 @@ func TestClientSet(t *testing.T) {
 			return 5, nil
 		})
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
-		var client = greddis.NewClient(ctx, opts)
-		var err = client.Set(ctx, "testkey", "test string", 0)
+		client, err := greddis.NewClient(ctx, opts)
+		err = client.Set(ctx, "testkey", "test string", 0)
 		require.NoError(t, err)
 	})
 	t.Run("set string with TTL", func(t *testing.T) {
@@ -157,8 +188,8 @@ func TestClientSet(t *testing.T) {
 			return 5, nil
 		})
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
-		var client = greddis.NewClient(ctx, opts)
-		var err = client.Set(ctx, "testkey", "test string", 1)
+		client, err := greddis.NewClient(ctx, opts)
+		err = client.Set(ctx, "testkey", "test string", 1)
 		require.NoError(t, err)
 	})
 }
@@ -171,8 +202,8 @@ func TestClientDel(t *testing.T) {
 				return nil, errors.New("EOF")
 			},
 		}
-		var client = greddis.NewClient(ctx, opts)
-		var err = client.Del(ctx, "testkey")
+		client, err := greddis.NewClient(ctx, opts)
+		err = client.Del(ctx, "testkey")
 		require.Error(t, err)
 	})
 	t.Run("delete key", func(t *testing.T) {
@@ -195,8 +226,8 @@ func TestClientDel(t *testing.T) {
 			return 5, nil
 		})
 		mockConn.EXPECT().SetReadDeadline(time.Time{})
-		var client = greddis.NewClient(ctx, opts)
-		var err = client.Del(ctx, "testkey")
+		client, err := greddis.NewClient(ctx, opts)
+		err = client.Del(ctx, "testkey")
 		require.NoError(t, err)
 	})
 }

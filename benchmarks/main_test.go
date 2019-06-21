@@ -143,16 +143,8 @@ func BenchmarkNetSingle(b *testing.B) {
 func BenchmarkGreddisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var ctx = context.Background()
-	var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-		MaxSize: 10,
-		Dial: func(ctx context.Context) (net.Conn, error) {
-			return net.Dial("tcp", "172.16.28.2:6379")
-		},
-	})
-	var err = client.Set(ctx, "testkey", "blahblah", 0)
-	if err != nil {
-		panic(err)
-	}
+	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://172.16.28.2:6379"})
+	client.Set(ctx, "testkey", "blahblah", 0)
 	var buf = &bytes.Buffer{}
 	for i := 0; i < b.N; i++ {
 		var res, _ = client.Get(ctx, "testkey")
@@ -353,12 +345,7 @@ func greddisGet(addr string, key string, value string) func(*testing.B) {
 		b.ReportAllocs()
 		var s = stats.AddStats(b, 10)
 		var ctx = context.Background()
-		var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-			MaxSize: 10,
-			Dial: func(ctx context.Context) (net.Conn, error) {
-				return net.Dial("tcp", addr)
-			},
-		})
+		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
 		client.Set(ctx, key, value, 0)
 		var buf = &bytes.Buffer{}
 		for i := 0; i < b.N; i++ {
@@ -421,12 +408,7 @@ func greddisSet(addr string, key string, value string) func(*testing.B) {
 		b.ReportAllocs()
 		var s = stats.AddStats(b, 10)
 		var ctx = context.Background()
-		var client = greddis.NewClient(ctx, &greddis.PoolOptions{
-			MaxSize: 10,
-			Dial: func(ctx context.Context) (net.Conn, error) {
-				return net.Dial("tcp", addr)
-			},
-		})
+		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
 		var strPtr = &value
 		for i := 0; i < b.N; i++ {
 			var t = time.Now()

@@ -23,40 +23,50 @@ func testingPool(t *testing.T) (*pool, *mock_net.MockConn) {
 	var ctrl = gomock.NewController(t)
 	defer ctrl.Finish()
 	var connMock = mock_net.NewMockConn(ctrl)
-	return newPool(ctx, &PoolOptions{
+	p, _ := newPool(ctx, &PoolOptions{
 		TrimOptions: &TrimOptions{Interval: -1, BufQuantileTargets: []float64{0.8, 0.9, 0.99, 1}},
 		Dial: func(ctx context.Context) (net.Conn, error) {
 			return connMock, nil
 		},
 		MaxIdle: 1,
 		MaxSize: 2,
-	}).(*pool), connMock
+	})
+	return p.(*pool), connMock
+}
+
+func TestDialFunc(t *testing.T) {
+	dFunc, err := createDial("unix://tmp/sock")
+	require.NoError(t, err)
+	dFunc(context.Background()) // what you don't do for coverage
 }
 
 func TestPool(t *testing.T) {
 	t.Run("test set target to existing quantile", func(t *testing.T) {
 		var ctx = context.Background()
-		var pool = newPool(ctx, &PoolOptions{
+		p, _ := newPool(ctx, &PoolOptions{
 			TrimOptions: &TrimOptions{BufQuantileTargets: []float64{0.8}, BufQuantileTarget: 0.8},
-		}).(*pool)
-		require.Equal(t, 0, len(pool.conns))
-		require.Equal(t, 0.8, pool.opts.TrimOptions.BufQuantileTarget)
+		})
+		checkPool := p.(*pool)
+		require.Equal(t, 0, len(checkPool.conns))
+		require.Equal(t, 0.8, checkPool.opts.TrimOptions.BufQuantileTarget)
 	})
 	t.Run("test default TrimmingAllowedMargin", func(t *testing.T) {
 		var ctx = context.Background()
-		var pool = newPool(ctx, &PoolOptions{
+		p, _ := newPool(ctx, &PoolOptions{
 			TrimOptions: &TrimOptions{AllowedMargin: -1},
-		}).(*pool)
-		require.Equal(t, 0, len(pool.conns))
-		require.Zero(t, pool.opts.TrimOptions.AllowedMargin)
+		})
+		checkPool := p.(*pool)
+		require.Equal(t, 0, len(checkPool.conns))
+		require.Zero(t, checkPool.opts.TrimOptions.AllowedMargin)
 	})
 	t.Run("test default TrimmingInterval", func(t *testing.T) {
 		var ctx = context.Background()
-		var pool = newPool(ctx, &PoolOptions{
+		p, _ := newPool(ctx, &PoolOptions{
 			TrimOptions: &TrimOptions{Interval: 0},
-		}).(*pool)
-		require.Equal(t, 0, len(pool.conns))
-		require.Equal(t, 500*time.Millisecond, pool.opts.TrimOptions.Interval)
+		})
+		checkPool := p.(*pool)
+		require.Equal(t, 0, len(checkPool.conns))
+		require.Equal(t, 500*time.Millisecond, checkPool.opts.TrimOptions.Interval)
 	})
 	t.Run("get without conns in pool", func(t *testing.T) {
 		var ctx = context.Background()
@@ -77,18 +87,19 @@ func TestPool(t *testing.T) {
 		var returns []retType
 		returns = append(returns, retType{failConn, errors.New("omg failed to connect")})
 		returns = append(returns, retType{successConn, nil})
-		var pool = newPool(ctx, &PoolOptions{
+		p, _ := newPool(ctx, &PoolOptions{
 			TrimOptions: &TrimOptions{Interval: -1},
 			Dial: func(ctx context.Context) (net.Conn, error) {
 				var ret retType
 				ret, returns = returns[0], returns[1:]
 				return ret.conn, ret.err
 			},
-		}).(*pool)
-		require.Equal(t, 0, len(pool.conns))
-		var _, err = pool.Get(ctx)
+		})
+		checkPool := p.(*pool)
+		require.Equal(t, 0, len(checkPool.conns))
+		var _, err = checkPool.Get(ctx)
 		require.Error(t, err)
-		var _, err2 = pool.Get(ctx)
+		var _, err2 = checkPool.Get(ctx)
 		require.NoError(t, err2)
 	})
 	t.Run("put without conns in pool", func(t *testing.T) {
