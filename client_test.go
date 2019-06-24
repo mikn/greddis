@@ -65,7 +65,7 @@ func TestClientGet(t *testing.T) {
 		require.Nil(t, res)
 	})
 	t.Run("fail on bulk string read", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
@@ -85,9 +85,11 @@ func TestClientGet(t *testing.T) {
 		res, err := client.Get(ctx, "testkey")
 		require.Error(t, err)
 		require.Nil(t, res)
+		cancel()
 	})
 	t.Run("Get string (successfully)", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
@@ -117,7 +119,8 @@ func TestClientGet(t *testing.T) {
 
 func TestClientSet(t *testing.T) {
 	t.Run("fail on get pool connection", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var opts = &greddis.PoolOptions{
 			Dial: func(ctx context.Context) (net.Conn, error) {
 				return nil, errors.New("EOF")
@@ -128,7 +131,8 @@ func TestClientSet(t *testing.T) {
 		require.Error(t, err)
 	})
 	t.Run("fail on get value", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
@@ -145,7 +149,8 @@ func TestClientSet(t *testing.T) {
 		require.Error(t, err)
 	})
 	t.Run("set string", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
@@ -169,7 +174,8 @@ func TestClientSet(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("set string with TTL", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)
@@ -196,7 +202,8 @@ func TestClientSet(t *testing.T) {
 
 func TestClientDel(t *testing.T) {
 	t.Run("fail on get pool connection", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var opts = &greddis.PoolOptions{
 			Dial: func(ctx context.Context) (net.Conn, error) {
 				return nil, errors.New("EOF")
@@ -207,7 +214,8 @@ func TestClientDel(t *testing.T) {
 		require.Error(t, err)
 	})
 	t.Run("delete key", func(t *testing.T) {
-		var ctx = context.Background()
+		var ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockConn = mock_net.NewMockConn(ctrl)

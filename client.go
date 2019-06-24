@@ -6,10 +6,6 @@ import (
 	"database/sql/driver"
 )
 
-// TODO Ensure we return a connection error instead of panic with nil ref when there's no connection
-// TODO Parse a DSN instead of asking people to provide a Dial function with the address in it
-// TODO stats
-// TODO tracing
 // TODO max lifetime
 
 var (
