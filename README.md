@@ -1,5 +1,6 @@
 # Greddis
 
+[![Actions Status](https://github.com/mikn/greddis/workflows/Go/badge.svg)](https://github.com/mikn/greddis/actions)
 [![CircleCI](https://circleci.com/gh/mikn/greddis/tree/master.svg?style=svg)](https://circleci.com/gh/mikn/greddis/tree/master)
 [![codecov](https://codecov.io/gh/mikn/greddis/branch/master/graph/badge.svg)](https://codecov.io/gh/mikn/greddis)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mikn/greddis)](https://goreportcard.com/report/github.com/mikn/greddis)
