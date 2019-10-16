@@ -64,11 +64,6 @@ BenchmarkNetSingleBufIO-8   	   76858	     14251 ns/op	      16 B/op	       2 al
 BenchmarkSockSingleFunc-8   	  126729	      8299 ns/op	       0 B/op	       0 allocs/op
 BenchmarkNetSingleFunc-8    	   80509	     14925 ns/op	       8 B/op	       1 allocs/op
 BenchmarkNetSingle-8        	   82456	     14629 ns/op	       0 B/op	       0 allocs/op
-
-BenchmarkNetSingleBufIO-8     	  100000	     21362 ns/op	      16 B/op	       2 allocs/op
-BenchmarkSockSingleFunc-8     	  100000	     13738 ns/op	       0 B/op	       0 allocs/op
-BenchmarkNetSingleFunc-8      	  100000	     21082 ns/op	       8 B/op	       1 allocs/op
-BenchmarkNetSingle-8          	  100000	     21185 ns/op	       0 B/op	       0 allocs/op
 ```
 The next question to answer is "Which connection pool implementation is most efficient?"
 We put channels v sync.Pool, vs Atomic Pool (keep track of available connections in an atomic.Int), vs Semaphore Pool (using a semaphore) and lastly Dropbox's net2.Pool package.
