@@ -30,9 +30,9 @@ Furthermore, it is compatible with any implementation of Valuer/Scanner from `da
 | ------- | --- |
 | Greddis | Yes |
 | Redigo  | No  |
-| GoRedis | No  |
+| GoRedis | Yes |
 
-According to the Redis Serialization Protocol ([RESP Specification](https://redis.io/topics/protocol)), client libraries should use the RESP protocol to make requests as well as parse it for responses. The other option is to use their "human readable" Telnet protocol, which both **GoRedis** and **Redigo** implements. The problem is that this does not allow the Redis server to up-front malloc the entire memory section required to store the request before parsing it, and thus it needs to iteratively parse the return in chunks until it reaches the end. This explains why **Greddis's** performance on Set is barely related to the payload size.
+According to the Redis Serialization Protocol ([RESP Specification](https://redis.io/topics/protocol)), client libraries should use the RESP protocol to make requests as well as parse it for responses. The other option is to use their "human readable" Telnet protocol, which **Redigo** implements. The problem is that this does not allow the Redis server to up-front malloc the entire memory section required to store the request before parsing it, and thus it needs to iteratively parse the return in chunks until it reaches the end.
 
 ### Pools request and response buffers to amortize allocation cost?
 
@@ -61,6 +61,11 @@ The benchmarks are run against a real redis server on localhost (network stack),
 If we can maintain a single connection, how fast can we go?
 Also note the SockSingleFunc benchmark is implemented using syscalls, so it blocks the entire go-routine thread rather than using epoll whilst waiting for the response, so it is not realistic to use.
 ```
+BenchmarkNetSingleBufIO-8   	   76858	     14251 ns/op	      16 B/op	       2 allocs/op
+BenchmarkSockSingleFunc-8   	  126729	      8299 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNetSingleFunc-8    	   80509	     14925 ns/op	       8 B/op	       1 allocs/op
+BenchmarkNetSingle-8        	   82456	     14629 ns/op	       0 B/op	       0 allocs/op
+
 BenchmarkNetSingleBufIO-8     	  100000	     21362 ns/op	      16 B/op	       2 allocs/op
 BenchmarkSockSingleFunc-8     	  100000	     13738 ns/op	       0 B/op	       0 allocs/op
 BenchmarkNetSingleFunc-8      	  100000	     21082 ns/op	       8 B/op	       1 allocs/op
@@ -69,31 +74,38 @@ BenchmarkNetSingle-8          	  100000	     21185 ns/op	       0 B/op	       0 
 The next question to answer is "Which connection pool implementation is most efficient?"
 We put channels v sync.Pool, vs Atomic Pool (keep track of available connections in an atomic.Int), vs Semaphore Pool (using a semaphore) and lastly Dropbox's net2.Pool package.
 ```
-BenchmarkNetChanPool-8        	  100000	     21673 ns/op	       0 B/op	       0 allocs/op
-BenchmarkNetSyncPool-8        	  100000	     22677 ns/op	      32 B/op	       1 allocs/op
-BenchmarkNetAtomicPool-8      	  100000	     22091 ns/op	      32 B/op	       1 allocs/op
-BenchmarkNetSemPool-8         	  100000	     22075 ns/op	      32 B/op	       1 allocs/op
-BenchmarkNet2Pool-8           	  100000	     23398 ns/op	     312 B/op	       5 allocs/op
+BenchmarkNetChanPool-8      	   72476	     15093 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNetSyncPool-8      	   74612	     15654 ns/op	      32 B/op	       1 allocs/op
+BenchmarkNetAtomicPool-8    	   81070	     15285 ns/op	      32 B/op	       1 allocs/op
+BenchmarkNetSemPool-8       	   79828	     15712 ns/op	      32 B/op	       1 allocs/op
+BenchmarkNet2Pool-8         	   77632	     16344 ns/op	     312 B/op	       5 allocs/op
+
 ```
 After having picked the most efficient (using a channel for the pool) this was picked for implementation in Greddis. It was also the only one with zero allocs, so yay!
 The benchmarks following is comparing Redigo, GoRedis and Greddis at different object sizes and set vs get.
 ```
-BenchmarkGreddisGet8b-8       	  100000	     21742 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGoRedisGet8b-8       	   50000	     24330 ns/op	     320 B/op	      14 allocs/op
-BenchmarkRedigoGet8b-8        	  100000	     22981 ns/op	     192 B/op	       9 allocs/op
-BenchmarkGreddisSet8b-8       	  100000	     21551 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGoRedisSet8b-8       	   50000	     23553 ns/op	     226 B/op	       7 allocs/op
-BenchmarkRedigoSet8b-8        	  100000	     24023 ns/op	      86 B/op	       5 allocs/op
-BenchmarkGreddisSet1000b-8    	  100000	     22501 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGoRedisSet1000b-8    	   50000	     23873 ns/op	     226 B/op	       7 allocs/op
-BenchmarkRedigoSet1000b-8     	  100000	     23167 ns/op	      86 B/op	       5 allocs/op
-BenchmarkGreddisSet5000b-8    	  100000	     22692 ns/op	       1 B/op	       0 allocs/op
-BenchmarkGoRedisSet5000b-8    	   50000	     35115 ns/op	     226 B/op	       7 allocs/op
-BenchmarkRedigoSet5000b-8     	   50000	     33089 ns/op	      86 B/op	       5 allocs/op
-BenchmarkGreddisGet5000b-8    	  100000	     23083 ns/op	       1 B/op	       0 allocs/op
-BenchmarkGoRedisGet5000b-8    	   50000	     31517 ns/op	   16475 B/op	      15 allocs/op
-BenchmarkRedigoGet5000b-8     	   50000	     27192 ns/op	    5563 B/op	       9 allocs/op
-BenchmarkGreddisGet50000b-8   	   30000	     41397 ns/op	      14 B/op	       0 allocs/op
-BenchmarkGoRedisGet50000b-8   	   20000	     66963 ns/op	  177929 B/op	      15 allocs/op
-BenchmarkRedigoGet50000b-8    	   30000	     50056 ns/op	   57574 B/op	       9 allocs/op
-```
+BenchmarkDrivers/GoRedisGet1000b-8         	   64934	     17424 ns/op	    3346 B/op	      15 allocs/op
+BenchmarkDrivers/GoRedisGet10000b-8        	   49533	     24067 ns/op	   31131 B/op	      15 allocs/op
+BenchmarkDrivers/GoRedisGet100000b-8       	   17294	     70664 ns/op	  426631 B/op	      18 allocs/op
+BenchmarkDrivers/GoRedisGet10000000b-8     	     171	   6483697 ns/op	40011340 B/op	      20 allocs/op
+BenchmarkDrivers/GoRedisSet1000b-8         	   67077	     15779 ns/op	     226 B/op	       7 allocs/op
+BenchmarkDrivers/GoRedisSet10000b-8        	   40956	     26397 ns/op	     226 B/op	       7 allocs/op
+BenchmarkDrivers/GoRedisSet100000b-8       	   27088	     44406 ns/op	     226 B/op	       7 allocs/op
+BenchmarkDrivers/GoRedisSet10000000b-8     	     438	   2963006 ns/op	     251 B/op	       7 allocs/op
+BenchmarkDrivers/RedigoGet1000b-8          	   73647	     15691 ns/op	    1219 B/op	       9 allocs/op
+BenchmarkDrivers/RedigoGet10000b-8         	   57913	     20549 ns/op	   10441 B/op	       9 allocs/op
+BenchmarkDrivers/RedigoGet100000b-8        	   27542	     43125 ns/op	  106748 B/op	       9 allocs/op
+BenchmarkDrivers/RedigoGet10000000b-8      	     302	   3944512 ns/op	10003065 B/op	      10 allocs/op
+BenchmarkDrivers/RedigoSet1000b-8          	   74454	     14803 ns/op	      99 B/op	       5 allocs/op
+BenchmarkDrivers/RedigoSet10000b-8         	   53648	     21935 ns/op	      99 B/op	       5 allocs/op
+BenchmarkDrivers/RedigoSet100000b-8        	   13182	     90295 ns/op	      99 B/op	       5 allocs/op
+BenchmarkDrivers/RedigoSet10000000b-8      	     151	   7929260 ns/op	     162 B/op	       5 allocs/op
+BenchmarkDrivers/GreddisGet1000b-8         	   80541	     14483 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisGet10000b-8        	   68679	     17770 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisGet100000b-8       	   29592	     40390 ns/op	      13 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisGet10000000b-8     	     343	   3271981 ns/op	   87568 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet1000b-8         	   74641	     16349 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet10000b-8        	   40538	     29171 ns/op	       2 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet100000b-8       	   26295	     46186 ns/op	       3 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet10000000b-8     	     417	   2840459 ns/op	      79 B/op	       0 allocs/op
+

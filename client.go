@@ -55,8 +55,13 @@ func (c *client) Get(ctx context.Context, key string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.cmd.add("GET").add(key)
-	conn.buf = conn.cmd.writeTo(conn.conn)
+	conn.cmd.start(conn.buf, 2).add("GET").add(key)
+	conn.buf, err = conn.cmd.flush()
+	if err != nil {
+		c.pool.Put(ctx, conn)
+		conn.cmd.reset(conn.conn)
+		return nil, err
+	}
 	conn.buf, err = readBulkString(conn.conn, conn.buf[:0])
 	if err != nil {
 		c.pool.Put(ctx, conn)
@@ -72,16 +77,23 @@ func (c *client) Set(ctx context.Context, key string, value driver.Value, ttl in
 	if err != nil {
 		return err
 	}
-	val, err := toBytesValue(value, conn.buf[:0])
+	if ttl > 0 {
+		err = conn.cmd.start(conn.buf, 5).add("SET").add(key).addUnsafe(value)
+		conn.cmd.add("EX").add(ttl)
+	} else {
+		err = conn.cmd.start(conn.buf, 3).add("SET").add(key).addUnsafe(value)
+	}
 	if err != nil {
 		c.pool.Put(ctx, conn)
+		conn.cmd.reset(conn.conn)
 		return err
 	}
-	conn.cmd.add("SET").add(key).add(val)
-	if ttl > 0 {
-		conn.cmd.add("EX").add(ttl)
+	conn.buf, err = conn.cmd.flush()
+	if err != nil {
+		c.pool.Put(ctx, conn)
+		conn.cmd.reset(conn.conn)
+		return err
 	}
-	conn.buf = conn.cmd.writeTo(conn.conn)
 	_, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(ctx, conn)
 	return err
@@ -92,8 +104,13 @@ func (c *client) Del(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	conn.cmd.add("DEL").add(key)
-	conn.buf = conn.cmd.writeTo(conn.conn)
+	conn.cmd.start(conn.buf, 2).add("DEL").add(key)
+	conn.buf, err = conn.cmd.flush()
+	if err != nil {
+		conn.cmd.reset(conn.conn)
+		c.pool.Put(ctx, conn)
+		return err
+	}
 	_, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(ctx, conn)
 	return err

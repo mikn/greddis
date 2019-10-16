@@ -1,6 +1,7 @@
 package greddis
 
 import (
+	"bufio"
 	"net"
 	"sync/atomic"
 	"time"
@@ -19,13 +20,10 @@ type conn struct {
 
 func newConn(c net.Conn, bufSize int) *conn {
 	buf := make([]byte, bufSize)
-	cmd := &command{}
-	cmd.array = &respArray{}
-	cmd.array.reset(buf)
 	return &conn{
 		conn:        c,
 		buf:         buf,
-		cmd:         cmd,
+		cmd:         &command{bufw: bufio.NewWriter(c)},
 		res:         NewResult(buf),
 		initBufSize: bufSize,
 		created:     time.Now(),

@@ -23,7 +23,7 @@ import (
 func BenchmarkNetSingleBufIO(b *testing.B) {
 	debug.SetGCPercent(-1)
 	b.ReportAllocs()
-	var c, err = net.Dial("tcp", "172.16.28.2:6379")
+	var c, err = net.Dial("tcp", "172.17.0.2:6379")
 	var conn = c.(*net.TCPConn)
 	if err != nil {
 		fmt.Println(err)
@@ -82,7 +82,7 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 
 func BenchmarkNetSingleFunc(b *testing.B) {
 	b.ReportAllocs()
-	var conn, err = net.Dial("tcp", "172.16.28.2:6379")
+	var conn, err = net.Dial("tcp", "172.17.0.2:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -117,7 +117,7 @@ func testCall(conn net.Conn, bytes []byte) string {
 
 func BenchmarkNetSingle(b *testing.B) {
 	b.ReportAllocs()
-	var conn, err = net.Dial("tcp", "172.16.28.2:6379")
+	var conn, err = net.Dial("tcp", "172.17.0.2:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -143,8 +143,8 @@ func BenchmarkNetSingle(b *testing.B) {
 func BenchmarkGreddisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var ctx = context.Background()
-	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://172.16.28.2:6379"})
-	client.Set(ctx, "testkey", "blahblah", 0)
+	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://172.17.0.2:6379"})
+	client.Set(ctx, "testkey", []byte("blahblah"), 0)
 	var buf = &bytes.Buffer{}
 	for i := 0; i < b.N; i++ {
 		var res, _ = client.Get(ctx, "testkey")
@@ -157,18 +157,18 @@ func BenchmarkGreddisSingle(b *testing.B) {
 func BenchmarkGoRedisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var client = goredis.NewClient(&goredis.Options{
-		Addr: "172.16.28.2:6379",
+		Addr: "172.17.0.2:6379",
 	})
 	client.Set("testkey", "blahblah", 0)
 	for i := 0; i < b.N; i++ {
-		client.Get("testkey").String()
+		_ = client.Get("testkey").String()
 	}
 	client.Del("testkey")
 }
 
 func BenchmarkRedigoSingle(b *testing.B) {
 	b.ReportAllocs()
-	var conn, _ = redigo.Dial("tcp", "172.16.28.2:6379")
+	var conn, _ = redigo.Dial("tcp", "172.17.0.2:6379")
 	conn.Do("set", "testkey", "blahblah")
 	for i := 0; i < b.N; i++ {
 		var val, err = conn.Do("get", "testkey")
@@ -179,7 +179,7 @@ func BenchmarkRedigoSingle(b *testing.B) {
 func BenchmarkNetChanPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newChanPool("tcp", "172.16.28.2:6379", 10)
+	var pool = newChanPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -211,7 +211,7 @@ func BenchmarkNetChanPool(b *testing.B) {
 func BenchmarkNetSyncPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newSyncPool("tcp", "172.16.28.2:6379", 10)
+	var pool = newSyncPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -243,7 +243,7 @@ func BenchmarkNetSyncPool(b *testing.B) {
 func BenchmarkNetAtomicPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newAtomicPool("tcp", "172.16.28.2:6379", 10)
+	var pool = newAtomicPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -275,7 +275,7 @@ func BenchmarkNetAtomicPool(b *testing.B) {
 func BenchmarkNetSemPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newSemPool("tcp", "172.16.28.2:6379", 10)
+	var pool = newSemPool("tcp", "172.17.0.2:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -311,8 +311,8 @@ func BenchmarkNet2Pool(b *testing.B) {
 		MaxActiveConnections: 10,
 		MaxIdleConnections:   10,
 	})
-	pool.Register("tcp", "172.16.28.2:6379")
-	var conn, err = pool.Get("tcp", "172.16.28.2:6379")
+	pool.Register("tcp", "172.17.0.2:6379")
+	var conn, err = pool.Get("tcp", "172.17.0.2:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -323,7 +323,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 	conn.ReleaseConnection()
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, _ = pool.Get("tcp", "172.16.28.2:6379")
+		conn, _ = pool.Get("tcp", "172.17.0.2:6379")
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -335,7 +335,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 		conn.ReleaseConnection()
 		s.Add(time.Now().Sub(t))
 	}
-	conn, _ = pool.Get("tcp", "172.16.28.2:6379")
+	conn, _ = pool.Get("tcp", "172.17.0.2:6379")
 	conn.Write([]byte("del testkey\r\n"))
 	conn.ReleaseConnection()
 }
@@ -346,11 +346,14 @@ func greddisGet(addr string, key string, value string) func(*testing.B) {
 		var s = stats.AddStats(b, 10)
 		var ctx = context.Background()
 		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
-		client.Set(ctx, key, value, 0)
+		client.Set(ctx, key, []byte(value), 0)
 		var buf = &bytes.Buffer{}
 		for i := 0; i < b.N; i++ {
 			var t = time.Now()
-			var res, _ = client.Get(ctx, key)
+			var res, err = client.Get(ctx, key)
+			if err != nil {
+				fmt.Println(err)
+			}
 			res.Scan(buf)
 			buf.Reset()
 			s.Add(time.Now().Sub(t))
@@ -370,7 +373,7 @@ func goredisGet(addr string, key string, value string) func(*testing.B) {
 		client.Set(key, value, 0)
 		for i := 0; i < b.N; i++ {
 			var t = time.Now()
-			client.Get(key).String()
+			_ = client.Get(key).String()
 			s.Add(time.Now().Sub(t))
 		}
 		client.Del(key)
@@ -410,6 +413,7 @@ func greddisSet(addr string, key string, value string) func(*testing.B) {
 		var ctx = context.Background()
 		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
 		var strPtr = &value
+		//byteVal := []byte(value)
 		for i := 0; i < b.N; i++ {
 			var t = time.Now()
 			client.Set(ctx, key, strPtr, 0)
@@ -475,19 +479,19 @@ func RandStringBytes(n int) string {
 
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
-		testFunc{name: "GreddisGet", f: greddisGet},
 		testFunc{name: "GoRedisGet", f: goredisGet},
-		testFunc{name: "RedigoGet", f: redigoGet},
-		testFunc{name: "GreddisSet", f: greddisSet},
 		testFunc{name: "GoRedisSet", f: goredisSet},
+		testFunc{name: "RedigoGet", f: redigoGet},
 		testFunc{name: "RedigoSet", f: redigoSet},
+		testFunc{name: "GreddisGet", f: greddisGet},
+		testFunc{name: "GreddisSet", f: greddisSet},
 	}
-	var sizes = []int{8, 1000, 5000, 50000, 1000000}
-	for _, s := range sizes {
-		for _, f := range funcs {
+	var sizes = []int{1000, 10000, 100000, 10000000}
+	for _, f := range funcs {
+		for _, s := range sizes {
 			b.Run(
 				fmt.Sprintf("%s%db", f.name, s),
-				f.f("172.16.28.2:6379", "testkey", RandStringBytes(s)),
+				f.f("172.17.0.2:6379", "testkey", RandStringBytes(s)),
 			)
 		}
 	}

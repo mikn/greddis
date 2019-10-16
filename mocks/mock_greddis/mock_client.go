@@ -5,6 +5,7 @@
 package mock_greddis
 
 import (
+	context "context"
 	driver "database/sql/driver"
 	gomock "github.com/golang/mock/gomock"
 	greddis "github.com/mikn/greddis"
@@ -35,44 +36,44 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // Get mocks base method
-func (m *MockClient) Get(key string) (*greddis.Result, error) {
+func (m *MockClient) Get(ctx context.Context, key string) (*greddis.Result, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", key)
+	ret := m.ctrl.Call(m, "Get", ctx, key)
 	ret0, _ := ret[0].(*greddis.Result)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get
-func (mr *MockClientMockRecorder) Get(key interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) Get(ctx, key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockClient)(nil).Get), key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockClient)(nil).Get), ctx, key)
 }
 
 // Set mocks base method
-func (m *MockClient) Set(key string, value driver.Value, ttl int) error {
+func (m *MockClient) Set(ctx context.Context, key string, value driver.Value, ttl int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Set", key, value, ttl)
+	ret := m.ctrl.Call(m, "Set", ctx, key, value, ttl)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Set indicates an expected call of Set
-func (mr *MockClientMockRecorder) Set(key, value, ttl interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) Set(ctx, key, value, ttl interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockClient)(nil).Set), key, value, ttl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockClient)(nil).Set), ctx, key, value, ttl)
 }
 
 // Del mocks base method
-func (m *MockClient) Del(key string) error {
+func (m *MockClient) Del(ctx context.Context, key string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Del", key)
+	ret := m.ctrl.Call(m, "Del", ctx, key)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Del indicates an expected call of Del
-func (mr *MockClientMockRecorder) Del(key interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) Del(ctx, key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockClient)(nil).Del), key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockClient)(nil).Del), ctx, key)
 }

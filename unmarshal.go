@@ -29,7 +29,7 @@ func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
 	}
 	// "remove" size prefix from []byte buffer
 	copy(buf, oldBuf[sizeLen:])
-	buf = buf[:len(buf)-sizeLen]
+	buf = buf[:len(oldBuf)-sizeLen]
 	if len(buf) < size {
 		// only pass in the bytes we want read to (and are missing)
 		readBuf := buf[len(buf):size]
