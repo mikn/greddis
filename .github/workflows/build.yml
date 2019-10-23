@@ -12,8 +12,12 @@ jobs:
       id: go
     - name: Check out code into the Go module directory
       uses: actions/checkout@v1
+    - name: scan license
+      run: FOSSA_TOKEN=${{secrets.FOSSA_TOKEN}} fossa analyze
     - name: test
       run: go test . -race -coverprofile=coverage.txt -covermode=atomic
+    - name: scan license
+      run: FOSSA_TOKEN=${{secrets.FOSSA_TOKEN}} fossa test
     - name: upload coverage to codecov
       uses: codecov/codecov-action@v1.0.2
       with:
