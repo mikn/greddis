@@ -12,11 +12,13 @@ jobs:
       id: go
     - name: Check out code into the Go module directory
       uses: actions/checkout@v1
+    - name: install fossa-cli
+      run: curl -H 'Cache-Control: no-cache' https://raw.githubusercontent.com/fossas/fossa-cli/master/install.sh | bash
     - name: scan license
       run: FOSSA_API_KEY=${{secrets.FOSSA_TOKEN}} fossa analyze
     - name: test
       run: go test . -race -coverprofile=coverage.txt -covermode=atomic
-    - name: scan license
+    - name: wait for license scan results
       run: FOSSA_API_KEY=${{secrets.FOSSA_TOKEN}} fossa test
     - name: upload coverage to codecov
       uses: codecov/codecov-action@v1.0.2
