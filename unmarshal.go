@@ -9,16 +9,22 @@ import (
 	"unsafe"
 )
 
-func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
-	var err error
+func unmarshalCount(r io.Reader, buf []byte) (int, int, error) {
 	intBuf, err := unmarshalSimpleString(r, buf)
 	if err != nil {
-		return nil, err
+		return 0, 0, err
 	}
-	sizeLen := len(intBuf) + len(sep)
 	// zero-alloc conversion, ref: https://golang.org/src/strings/builder.go#L45
 	size, err := strconv.Atoi(*(*string)(unsafe.Pointer(&intBuf)))
 	if size < 0 || err != nil {
+		return 0, 0, err
+	}
+	return len(intBuf) + len(sep), size, nil
+}
+
+func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
+	sizeLen, size, err := unmarshalCount(r, buf)
+	if err != nil {
 		return nil, err
 	}
 	size = size + 2
@@ -70,13 +76,13 @@ func unmarshalSimpleString(r io.Reader, buf []byte) ([]byte, error) {
 func readInteger(r io.Reader, buf []byte) (i int, err error) {
 	buf, err = readSwitch(':', unmarshalSimpleString, r, buf)
 	if err != nil {
-		return 0, err
+		return
 	}
 	i, err = strconv.Atoi(*(*string)(unsafe.Pointer(&buf)))
 	if err != nil {
-		return 0, err
+		return
 	}
-	return i, nil
+	return
 }
 
 func readBulkString(r io.Reader, buf []byte) ([]byte, error) {
@@ -90,13 +96,20 @@ func readSimpleString(r io.Reader, buf []byte) ([]byte, error) {
 type readFunc func(io.Reader, []byte) ([]byte, error)
 
 func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte, error) {
-	buf = buf[:cap(buf)]
-	i, err := r.Read(buf)
-	if err != nil {
-		return nil, err
+	var i int
+	var err error
+	// TODO should maybe not call read here?
+	if len(buf) == 0 {
+		buf = buf[:cap(buf)]
+		i, err = r.Read(buf)
+		if err != nil {
+			return nil, err
+		}
 	}
 	switch buf[0] {
 	case prefix:
+		// TODO this may have performance impact on larger data sizes, as it is a memcopy
+		// But we want to make sure that the buf returned at the end is the same, so we need to
 		copy(buf, buf[1:i]) // remove prefix
 		return callback(r, buf[:i-1])
 	case '-':
@@ -108,4 +121,22 @@ func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte
 	default:
 		return nil, fmt.Errorf("Expected prefix '%s' or '-', but received '%s'", string(prefix), string(buf[0]))
 	}
+}
+
+func readArray(r io.Reader, arrResult *ArrayResult) (*ArrayResult, error) {
+	_, err := readSwitch('*', func(r io.Reader, b []byte) ([]byte, error) {
+		sizeLen, size, err := unmarshalCount(r, b)
+		if err != nil {
+			return nil, err
+		}
+		copy(b, b[sizeLen:])
+		arrResult.length = size
+		arrResult.buf = b
+		return nil, nil
+
+	}, r, arrResult.buf)
+	if err != nil {
+		return nil, err
+	}
+	return arrResult, err
 }
