@@ -33,10 +33,16 @@ type PubSubOpts struct {
 
 // TODO ClientOpts to encapsulate PubSubOpts and PoolOpts
 
+type Subscriber interface {
+	// Subscribe returns a map of channels corresponding to the string value of the topics being subscribed to
+	Subscribe(ctx context.Context, topics ...interface{}) (msgChanMap MessageChanMap, err error)
+	// Unsubscribe closes the subscriptions on the channels given
+	Unsubscribe(ctx context.Context, topics ...interface{}) (err error)
+}
+
 // Client is the interface to interact with Redis. It uses connections
 // with a single buffer attached, much like the MySQL driver implementation.
-// This allows it to reduce stack allocations. It uses the same []byte buffer
-// to send commands to Redis to save memory.
+// This allows it to reduce stack allocations.
 type Client interface {
 	// Get executes a get command on a redis server and returns a Result type, which you can use Scan
 	// on to get the result put into a variable
@@ -49,23 +55,32 @@ type Client interface {
 	Ping(ctx context.Context) error
 	// Publish publishes a message to the selected topic, it returns an int of the number of clients
 	// that received the message
-	Publish(ctx context.Context, topic string, message driver.Value) (int, error)
-	// Subscribe waits for the next message to arrive and returns only when a message is received
-	Subscribe(ctx context.Context, topics ...interface{}) (msgChanMap *MessageChanMap, err error)
-	// Unsubscribe closes the subscriptions on the channels given
-	Unsubscribe(ctx context.Context, topics ...interface{}) (err error)
+	Publish(ctx context.Context, topic string, message driver.Value) (recvCount int, err error)
+}
+
+type SubClient interface {
+	Subscriber
+	Client
 }
 
 // NewClient returns a client with the options specified
-func NewClient(ctx context.Context, opts *PoolOptions) (Client, error) {
+func NewClient(ctx context.Context, opts *PoolOptions) (SubClient, error) {
 	pool, err := newPool(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	// TODO instantiate subManager
+	subConn, err := pool.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &client{
 		pool:     pool,
 		poolOpts: opts,
+		subMngr: newSubManager(subConn, &PubSubOpts{
+			PingInterval: 5 * time.Second,
+			ReadTimeout:  opts.ReadTimeout,
+			InitBufSize:  opts.InitialBufSize,
+		}),
 	}, nil
 }
 
@@ -162,24 +177,21 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	return i, err
 }
 
-func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (*MessageChanMap, error) {
-	conn := c.subMngr.getConn()
-	err := conn.cmd.subscribe(ctx, topics)
+func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
+	chanMap, err := c.subMngr.subscribe(ctx, topics...)
 	if err != nil {
-		conn.cmd.reset(conn.conn)
+		c.subMngr.conn.cmd.reset(c.subMngr.conn.conn)
 		return nil, err
 	}
-	c.subMngr.putConn(conn)
-	return nil, nil
+	return chanMap, nil
 }
 
 func (c *client) Unsubscribe(ctx context.Context, topics ...interface{}) error {
-	conn := c.subMngr.getConn()
-	err := unsubscribe(ctx, conn, topics)
+	conn, err := c.pool.Get(ctx)
 	if err != nil {
-		conn.cmd.reset(conn.conn)
 		return err
 	}
-	c.subMngr.putConn(conn)
-	return nil
+	err = unsubscribe(ctx, conn, topics)
+	c.pool.Put(ctx, conn)
+	return err
 }

@@ -88,13 +88,16 @@ func (a *ArrayResult) Next() error {
 		var err error
 		switch a.buf[0] {
 		case '$':
+			// TODO should not need to copy here
+			copy(a.buf, a.buf[1:])
 			a.res.value, err = unmarshalBulkString(a.r, a.buf)
 		case ':':
+			copy(a.buf, a.buf[1:])
 			a.res.value, err = unmarshalSimpleString(a.r, a.buf)
 		default:
-			return fmt.Errorf("Expected prefix '$', ':' or '-', but received '%s'", string(a.buf[0]))
+			err = fmt.Errorf("Expected prefix '$', ':' or '-', but received '%s'", string(a.buf[0]))
 		}
-		a.buf = a.res.value
+		a.buf = a.res.value[:cap(a.res.value)]
 		a.pos++
 		return err
 	}
@@ -107,6 +110,10 @@ func (a *ArrayResult) Scan(dst interface{}) error {
 		return errors.New("Need to call Next() on the ArrayResult before you can call scan")
 	}
 	err := a.res.Scan(dst)
+	if len(a.buf) >= len(a.res.value)+2 {
+		// TODO We shouldn't do a copy here, we should be able to "slide along" the buffer instead
+		copy(a.buf, a.buf[len(a.res.value)+2:cap(a.buf)])
+	}
 	a.res.value = nil
 	return err
 }
@@ -116,9 +123,12 @@ type internalArray struct {
 	err *errProxy
 }
 
-func (i *internalArray) SwitchOnNext() []byte {
-	i.arr.Next()
-	return i.arr.res.value
+func (i *internalArray) SwitchOnNext() string {
+	i.err = i.storeError(i.arr.Next())
+	if i.err == nil {
+		return *(*string)(unsafe.Pointer(&i.arr.res.value))
+	}
+	return ""
 }
 
 func (i *internalArray) storeError(err error) *errProxy {
@@ -134,6 +144,16 @@ func (i *internalArray) storeError(err error) *errProxy {
 
 func (i *internalArray) Skip() *internalArray {
 	i.err = i.storeError(i.arr.Next())
+	i.Next()
+	return i
+}
+
+func (i *internalArray) Next() *internalArray {
+	if len(i.arr.buf) >= len(i.arr.res.value)+2 {
+		// TODO We shouldn't do a copy here, we should be able to "slide along" the buffer instead
+		copy(i.arr.buf, i.arr.buf[len(i.arr.res.value)+2:cap(i.arr.buf)])
+	}
+	i.arr.res.value = nil
 	return i
 }
 
@@ -145,15 +165,20 @@ func (i *internalArray) Expect(vars ...string) *internalArray {
 	for _, v := range vars {
 		comp := *(*[]byte)(unsafe.Pointer(&v))
 		if bytes.Equal(comp, i.arr.res.value) {
+			i.Next()
 			return i
 		}
 	}
 	i.err = &errProxy{proxied: fmt.Errorf("%s was not equal to any of %s", i.arr.res.value, vars)}
+	i.Next()
 	return i
 }
 
 func (i *internalArray) GetErrors() error {
-	return i.err
+	if i.err != nil {
+		return i.err
+	}
+	return nil
 }
 
 func (i *internalArray) Scan(dst interface{}) *internalArray {

@@ -99,7 +99,8 @@ func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte
 	var i int
 	var err error
 	// TODO should maybe not call read here?
-	if len(buf) == 0 {
+	i = len(buf)
+	if i == 0 {
 		buf = buf[:cap(buf)]
 		i, err = r.Read(buf)
 		if err != nil {

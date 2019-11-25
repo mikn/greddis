@@ -13,6 +13,28 @@ Greddis focus is high performance and letting the user of the library control it
 
 Furthermore, it is compatible with any implementation of Valuer/Scanner from `database/sql` as long as they have a `[]byte` implementation (as all data returned from Redis is `[]byte`).
 
+## Roadmap
+ - [ ] Pub/sub commands
+ - [ ] Sentinel support
+
+## Helping out?
+To run the unit tests
+```
+$ go get .
+$ go generate
+$ go test
+```
+And to run the integration tests
+```
+$ go test -tags=integration
+```
+To run the benchmarks
+```
+$ cd benchmarks/
+$ go test -bench=.
+```
+
+
 ## How does it compare to Redigo/GoRedis?
 
 ### Efficient use of connections?
@@ -33,7 +55,7 @@ Furthermore, it is compatible with any implementation of Valuer/Scanner from `da
 | Redigo  | No  |
 | GoRedis | Yes |
 
-According to the Redis Serialization Protocol ([RESP Specification](https://redis.io/topics/protocol)), client libraries should use the RESP protocol to make requests as well as parse it for responses. The other option is to use their "human readable" Telnet protocol, which **Redigo** implements. The problem is that this does not allow the Redis server to up-front malloc the entire memory section required to store the request before parsing it, and thus it needs to iteratively parse the return in chunks until it reaches the end.
+According to the Redis Serialization Protocol ([RESP Specification](https://redis.io/topics/protocol)), client libraries should use the RESP protocol to make requests as well as parse it for responses. The other option is to use their "human readable" Telnet protocol, which **Redigo** implements. The problem is that this does not allow the Redis server to up-front allocate the entire memory section required to store the request before parsing it, and thus it needs to iteratively parse the return in chunks until it reaches the end.
 
 ### Pools request and response buffers to amortize allocation cost?
 

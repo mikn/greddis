@@ -64,31 +64,40 @@ type msg struct {
 	array   *ArrayResult
 }
 
+func newSubManager(conn *conn, opts *PubSubOpts) *subManager {
+	mngr := &subManager{
+		opts:      opts,
+		array:     &internalArray{arr: &ArrayResult{res: NewResult(conn.buf)}},
+		chans:     &sync.Map{},
+		conn:      conn,
+		msgPool:   &sync.Pool{},
+		writeLock: &sync.Mutex{},
+		readChan:  make(chan string, 10),
+		listening: false,
+	}
+	mngr.msgPool.New = func() interface{} {
+		m := &msg{
+			message: &Message{
+				Result: NewResult(make([]byte, 0, opts.InitBufSize)),
+			},
+			array: &ArrayResult{},
+		}
+		m.array.res = m.message.Result
+		m.array.buf = m.message.Result.value // this gets relinked in array.Next()
+		return m
+	}
+	return mngr
+}
+
 type subManager struct {
+	listening bool
 	array     *internalArray
 	chans     *sync.Map
 	conn      *conn
 	msgPool   *sync.Pool
 	opts      *PubSubOpts
 	writeLock *sync.Mutex
-	readChan  chan readFunc
-}
-
-func newSubManager(conn *conn, opts *PubSubOpts) *subManager {
-	mngr := &subManager{
-		array:     &internalArray{arr: &ArrayResult{res: NewResult(conn.buf)}},
-		conn:      conn,
-		msgPool:   &sync.Pool{},
-		writeLock: &sync.Mutex{},
-		readChan:  make(chan readFunc),
-	}
-	mngr.msgPool.New = func() interface{} {
-		m := &msg{message: &Message{Result: NewResult(make([]byte, 0, opts.InitBufSize))}}
-		m.array.res = m.message.Result
-		m.array.buf = m.message.Result.value // this gets relinked in array.Next()
-		return m
-	}
-	return mngr
+	readChan  chan string
 }
 
 func (s *subManager) tryRead(ctx context.Context, c *conn) (*msg, error) {
@@ -99,7 +108,6 @@ func (s *subManager) tryRead(ctx context.Context, c *conn) (*msg, error) {
 	readLen, err := c.conn.Read(m.array.buf[:cap(m.array.buf)])
 	m.array.buf = m.array.buf[:readLen]
 	// TODO when 1.14 is out, change this to this: https://github.com/golang/go/issues/31449
-	// TODO benchmark~
 	if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
 		c.conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout))
 		err = ping(ctx, c)
@@ -123,10 +131,9 @@ func readReply(c *conn, a *internalArray) {
 // user calls Result.Scan -> msg struct goes back to pool
 func (s *subManager) Listen(ctx context.Context, c *conn) {
 	s.conn = c
-	propList := make([]interface{}, 0, 3)
+	var count int
 	for {
 		m, err := s.tryRead(ctx, c)
-		arr, err := readArray(c.conn, m.array)
 		if err != nil {
 			var e ErrRetry
 			if errors.Is(err, &e) {
@@ -134,48 +141,49 @@ func (s *subManager) Listen(ctx context.Context, c *conn) {
 			}
 			return // otherwise exit
 		}
-		if arr.Len() == 4 {
-			propList = append(propList, &m.message.Pattern)
+		arr, err := readArray(c.conn, m.array)
+		if err != nil {
+			fmt.Println(err)
+			return
 		}
-		propList = append(propList, &m.message.Topic)
-		arr.Next() // skip first entry (message type). We already know from len()
-		for _, prop := range propList {
-			err = arr.Next()
-			if err != nil {
-				break // TODO log that something went wrong
-			}
-			err = arr.Scan(prop)
-			if err != nil {
-				break // TODO log that something went wrong
-			}
+		s.array.arr = arr
+		v := s.array.SwitchOnNext()
+		switch v {
+		case "pmessage":
+			s.array.Next().Scan(&m.message.Pattern).Scan(&m.message.Topic)
+		case "message":
+			s.array.Next().Scan(&m.message.Topic)
+		case "subscribe":
+			s.array.Next().Expect(<-s.readChan).Scan(&count)
+		case "psubscribe":
+			s.array.Next().Expect(<-s.readChan).Scan(&count)
+		default:
+			fmt.Printf("We shouldn't be here :( value: '%s'\n", v)
+		}
+		err = s.array.GetErrors()
+		if err != nil {
+			fmt.Printf("count '%d'\n", count)
+			fmt.Printf("error: %T\n", err)
+			// TODO log errors here
+			continue
 		}
 		// we call next here so that m.array.res (and m.message.Result) contains the final value
-		err = arr.Next()
-		// reset propList for next iteration
-		propList = propList[:0]
-		if err == nil {
-			s.dispatch(ctx, m)
-		}
+		arr.Next()
+		s.dispatch(ctx, m)
 	}
 }
 
-func (s *subManager) getConn() *conn {
-	s.writeLock.Lock()
-	return s.conn
-}
-
-func (s *subManager) putConn(conn *conn) {
-	s.conn = conn
-	s.writeLock.Unlock()
-}
-
 // Design publish command -> publish to channel that we're expecting a read, wait for return on second chan
-func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) error {
+func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
+	if !s.listening {
+		go s.Listen(ctx, s.conn)
+	}
 	subs := make([]*subscription, len(topics))
+	chanMap := make(MessageChanMap, len(topics))
 	cmd := s.conn.cmd
 	s.writeLock.Lock()
 	var subType int
-	for _, topic := range topics {
+	for i, topic := range topics {
 		var sub *subscription
 		switch d := topic.(type) {
 		case RedisPattern:
@@ -183,7 +191,7 @@ func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) error
 				subType = subPattern
 				cmd = cmd.start(s.conn.buf, len(topics)+1).add("PSUBSCRIBE")
 			} else if subType != 0 && subType != subPattern {
-				return ErrMixedTopicTypes
+				return nil, ErrMixedTopicTypes
 			}
 			sub = newSubscription(d, s.opts.InitBufSize)
 		case string:
@@ -191,26 +199,29 @@ func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) error
 				subType = subTopic
 				cmd = cmd.start(s.conn.buf, len(topics)+1).add("SUBSCRIBE")
 			} else if subType != 0 && subType != subTopic {
-				return ErrMixedTopicTypes
+				return nil, ErrMixedTopicTypes
 			}
 			sub = newSubscription(d, s.opts.InitBufSize)
 		default:
-			return fmt.Errorf("Wrong type! Expected RedisPattern or string, but received: %T", d)
+			return nil, fmt.Errorf("Wrong type! Expected RedisPattern or string, but received: %T", d)
 		}
 		cmd.add(sub.topic)
-		subs = append(subs, sub)
+		subs[i] = sub
 	}
 	var err error
 	s.conn.buf, err = cmd.flush()
+	for _, sub := range subs {
+		s.readChan <- sub.topic
+		s.chans.Store(sub.topic, sub)
+		chanMap[sub.topic] = sub.msgChan
+	}
 	s.writeLock.Unlock()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// TODO the return value here is an array that is the same for psubscribe and subscribe
-	// Format is: (action, topic, subscriptionCount)
-	// If subscriptionCount drops to 0, we can hand back the connection and kill our poor listener
+	// TODO If subscriptionCount drops to 0, we can hand back the connection and kill our poor listener
 	// this depends on the configuration of the subscriber portion
-	return nil
+	return chanMap, nil
 }
 
 func (s *subManager) dispatch(ctx context.Context, m *msg) {
@@ -226,7 +237,7 @@ func (s *subManager) dispatch(ctx context.Context, m *msg) {
 	}
 	if sub, ok := s.chans.Load(key); ok {
 		select {
-		case sub.(subscription).msgChan <- m.message:
+		case sub.(*subscription).msgChan <- m.message:
 		default: // TODO log that a message got discarded
 		}
 	}

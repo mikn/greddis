@@ -2,7 +2,6 @@ package greddis
 
 import (
 	"bufio"
-	"context"
 	"database/sql/driver"
 	"errors"
 	"fmt"

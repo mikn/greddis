@@ -497,6 +497,25 @@ func BenchmarkDrivers(b *testing.B) {
 	}
 }
 
+func BenchmarkGreddisPubSub(b *testing.B) {
+	b.ReportAllocs()
+	var ctx = context.Background()
+	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://localhost:6379"})
+	subs, err := client.Subscribe(ctx, "testtopic")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	var buf = &bytes.Buffer{}
+	for i := 0; i < b.N; i++ {
+		client.Publish(ctx, "testtopic", "hellotest")
+		msg := <-subs["testtopic"]
+		msg.Result.Scan(buf)
+		buf.Reset()
+	}
+	client.Unsubscribe(ctx, "testtopic")
+}
+
 //func TestMain(m *testing.M) {
 //	var code = stats.RunTestMain(m)
 //	os.Exit(code)
