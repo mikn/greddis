@@ -37,6 +37,12 @@ func NewResult(buf []byte) *Result {
 // productive with it. This implementation can be simpler and forego the source
 // switch since it is custom made for Redis.
 func (r *Result) Scan(dst interface{}) (err error) {
+	err = r.scan(dst)
+	r.finish()
+	return err
+}
+
+func (r *Result) scan(dst interface{}) (err error) {
 	switch d := dst.(type) {
 	case *string:
 		*d = string(r.value)
@@ -47,16 +53,16 @@ func (r *Result) Scan(dst interface{}) (err error) {
 			*d = int(val)
 		}
 	case *[]byte:
-		copy(*d, r.value)
+		t := make([]byte, len(r.value))
+		copy(t, r.value)
+		*d = t
 	case io.Writer:
 		_, err = d.Write(r.value)
 	case Scanner:
 		err = d.Scan(r.value)
 	default:
-		r.finish()
-		return fmt.Errorf("dst is not of any supported type. Is of type %s", d)
+		err = fmt.Errorf("dst is not of any supported type. Is of type %s", d)
 	}
-	r.finish()
 	return err
 }
 
@@ -84,6 +90,7 @@ func (a *ArrayResult) reset() {
 // Next prepares the next row to be used by `Scan()`, it returns either a "no more rows" error or
 // a connection/read error will be wrapped.
 func (a *ArrayResult) Next() error {
+	// TODO Next should maybe not actually read the value into the result, but rather just prepare the buffers
 	if a.length > a.pos {
 		var err error
 		switch a.buf[0] {
@@ -109,7 +116,7 @@ func (a *ArrayResult) Scan(dst interface{}) error {
 	if a.res.value == nil {
 		return errors.New("Need to call Next() on the ArrayResult before you can call scan")
 	}
-	err := a.res.Scan(dst)
+	err := a.res.scan(dst)
 	if len(a.buf) >= len(a.res.value)+2 {
 		// TODO We shouldn't do a copy here, we should be able to "slide along" the buffer instead
 		copy(a.buf, a.buf[len(a.res.value)+2:cap(a.buf)])
@@ -181,10 +188,12 @@ func (i *internalArray) GetErrors() error {
 	return nil
 }
 
-func (i *internalArray) Scan(dst interface{}) *internalArray {
-	i.err = i.storeError(i.arr.Next())
-	if i.err == nil { // and no previous problems with scan/next
-		i.err = i.storeError(i.arr.Scan(dst))
+func (i *internalArray) Scan(dst ...interface{}) *internalArray {
+	for _, d := range dst {
+		i.err = i.storeError(i.arr.Next())
+		if i.err == nil { // and no previous problems with scan/next
+			i.err = i.storeError(i.arr.Scan(d))
+		}
 	}
 	return i
 }

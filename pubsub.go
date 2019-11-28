@@ -20,8 +20,6 @@ type MessageChan <-chan *Message
 
 type MessageChanMap map[string]MessageChan
 
-type subMap map[string]*subscription
-
 func newSubscription(topic interface{}, bufLen int) *subscription {
 	var t string
 	var s int
@@ -53,15 +51,54 @@ type subscription struct {
 }
 
 type Message struct {
-	Topic   string
+	Ctx     context.Context
 	Pattern string
 	Result  *Result
-	Ctx     context.Context
+	Topic   string
+	array   *ArrayResult
 }
 
-type msg struct {
-	message *Message
-	array   *ArrayResult
+type msgPool struct {
+	msgs        chan *Message
+	initBufSize int
+	entityId    int
+}
+
+func newMsgPool(initBufSize int) *msgPool {
+	return &msgPool{
+		initBufSize: initBufSize,
+		msgs:        make(chan *Message, 10),
+	}
+}
+
+func (mp *msgPool) Get() *Message {
+	var m *Message
+	select {
+	case m = <-mp.msgs:
+	default:
+		m = mp.New()
+	}
+	return m
+}
+
+func (mp *msgPool) New() *Message {
+	res := NewResult(make([]byte, 0, mp.initBufSize))
+	m := &Message{
+		Result:  res,
+		array:   &ArrayResult{res: res, buf: res.value},
+	}
+	res.finish = func() {
+		m.array.reset()
+		mp.Put(m)
+	}
+	return m
+}
+
+func (mp *msgPool) Put(m *Message) {
+	select {
+	case mp.msgs <- m:
+	default:
+	}
 }
 
 func newSubManager(conn *conn, opts *PubSubOpts) *subManager {
@@ -70,21 +107,10 @@ func newSubManager(conn *conn, opts *PubSubOpts) *subManager {
 		array:     &internalArray{arr: &ArrayResult{res: NewResult(conn.buf)}},
 		chans:     &sync.Map{},
 		conn:      conn,
-		msgPool:   &sync.Pool{},
+		msgPool:   newMsgPool(opts.InitBufSize),
 		writeLock: &sync.Mutex{},
 		readChan:  make(chan string, 10),
 		listening: false,
-	}
-	mngr.msgPool.New = func() interface{} {
-		m := &msg{
-			message: &Message{
-				Result: NewResult(make([]byte, 0, opts.InitBufSize)),
-			},
-			array: &ArrayResult{},
-		}
-		m.array.res = m.message.Result
-		m.array.buf = m.message.Result.value // this gets relinked in array.Next()
-		return m
 	}
 	return mngr
 }
@@ -94,14 +120,14 @@ type subManager struct {
 	array     *internalArray
 	chans     *sync.Map
 	conn      *conn
-	msgPool   *sync.Pool
+	msgPool   *msgPool
 	opts      *PubSubOpts
 	writeLock *sync.Mutex
 	readChan  chan string
 }
 
-func (s *subManager) tryRead(ctx context.Context, c *conn) (*msg, error) {
-	m := s.msgPool.Get().(*msg)
+func (s *subManager) tryRead(ctx context.Context, c *conn) (*Message, error) {
+	m := s.msgPool.Get()
 	m.array.r = c.conn
 	// Ahh, low-level reading is so much fun
 	c.conn.SetReadDeadline(time.Now().Add(s.opts.PingInterval))
@@ -141,24 +167,26 @@ func (s *subManager) Listen(ctx context.Context, c *conn) {
 			}
 			return // otherwise exit
 		}
-		arr, err := readArray(c.conn, m.array)
+		m.array, err = readArray(c.conn, m.array)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		s.array.arr = arr
-		v := s.array.SwitchOnNext()
-		switch v {
+		s.array.arr = m.array
+		switch s.array.SwitchOnNext() {
 		case "pmessage":
-			s.array.Next().Scan(&m.message.Pattern).Scan(&m.message.Topic)
+			s.array.Next().Scan(&m.Pattern, &m.Topic)
 		case "message":
-			s.array.Next().Scan(&m.message.Topic)
+			// TODO This causes an allocation because m.Topic is a string, which triggers a copy
+			s.array.Next().Scan(&m.Topic)
 		case "subscribe":
 			s.array.Next().Expect(<-s.readChan).Scan(&count)
 		case "psubscribe":
 			s.array.Next().Expect(<-s.readChan).Scan(&count)
+		case "unsubscribe":
+		case "punsubscribe":
 		default:
-			fmt.Printf("We shouldn't be here :( value: '%s'\n", v)
+			fmt.Printf("We shouldn't be here :( value: '%s'\n", string(s.array.arr.res.value))
 		}
 		err = s.array.GetErrors()
 		if err != nil {
@@ -167,8 +195,8 @@ func (s *subManager) Listen(ctx context.Context, c *conn) {
 			// TODO log errors here
 			continue
 		}
-		// we call next here so that m.array.res (and m.message.Result) contains the final value
-		arr.Next()
+		// we call next here so that m.array.res (and m.Result) contains the final value
+		m.array.Next()
 		s.dispatch(ctx, m)
 	}
 }
@@ -177,6 +205,7 @@ func (s *subManager) Listen(ctx context.Context, c *conn) {
 func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
 	if !s.listening {
 		go s.Listen(ctx, s.conn)
+		s.listening = true
 	}
 	subs := make([]*subscription, len(topics))
 	chanMap := make(MessageChanMap, len(topics))
@@ -224,36 +253,30 @@ func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) (Mess
 	return chanMap, nil
 }
 
-func (s *subManager) dispatch(ctx context.Context, m *msg) {
-	m.message.Ctx = ctx
-	m.message.Result.finish = func() {
-		m.array.reset()
-		s.msgPool.Put(m)
-		m.message.Result.finish = func() {}
-	}
-	key := m.message.Topic
+func (s *subManager) dispatch(ctx context.Context, m *Message) {
+	m.Ctx = ctx
+	key := m.Topic
 	if m.array.Len() == 4 {
-		key = m.message.Pattern
+		key = m.Pattern
 	}
 	if sub, ok := s.chans.Load(key); ok {
 		select {
-		case sub.(*subscription).msgChan <- m.message:
+		case sub.(*subscription).msgChan <- m:
 		default: // TODO log that a message got discarded
 		}
 	}
 }
 
-func (s *subManager) Subscribe(ctx context.Context, sub *subscription) error {
-	// For simplicity we only allow one subscriber per pattern (same as Redis), if you want to shoot
-	// yourself in the foot you still have that option by using multiple patterns matching the same topic,
-	// or registering a meta-callback that can dispatch to all the rest of your evil handlers
-	if _, loaded := s.chans.LoadOrStore(sub.topic, sub); loaded {
-		return fmt.Errorf("Subscriber already exists for %s", sub.topic)
+func (s *subManager) Unsubscribe(ctx context.Context, topics ...interface{}) error {
+	// TODO support a toggle to kill the loop so that when subscription count reaches 0, it exits cleanly
+	unsubscribe(ctx, s.conn, topics...)
+	for _, topic := range topics {
+		switch d := topic.(type) {
+		case RedisPattern:
+			s.chans.Delete(d)
+		case string:
+			s.chans.Delete(d)
+		}
 	}
 	return nil
-}
-
-func (s *subManager) Unsubscribe(ctx context.Context, topic string) {
-	// TODO support a toggle to kill the loop so that when subscription count reaches 0, it exits cleanly
-	s.chans.Delete(topic)
 }

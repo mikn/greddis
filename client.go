@@ -73,14 +73,15 @@ func NewClient(ctx context.Context, opts *PoolOptions) (SubClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	subMngr := newSubManager(subConn, &PubSubOpts{
+		PingInterval: 5 * time.Second,
+		ReadTimeout:  opts.ReadTimeout,
+		InitBufSize:  opts.InitialBufSize,
+	})
 	return &client{
 		pool:     pool,
 		poolOpts: opts,
-		subMngr: newSubManager(subConn, &PubSubOpts{
-			PingInterval: 5 * time.Second,
-			ReadTimeout:  opts.ReadTimeout,
-			InitBufSize:  opts.InitialBufSize,
-		}),
+		subMngr:  subMngr,
 	}, nil
 }
 
@@ -187,11 +188,10 @@ func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (MessageC
 }
 
 func (c *client) Unsubscribe(ctx context.Context, topics ...interface{}) error {
-	conn, err := c.pool.Get(ctx)
+	err := c.subMngr.Unsubscribe(ctx, topics...)
 	if err != nil {
+		c.subMngr.conn.cmd.reset(c.subMngr.conn.conn)
 		return err
 	}
-	err = unsubscribe(ctx, conn, topics)
-	c.pool.Put(ctx, conn)
 	return err
 }

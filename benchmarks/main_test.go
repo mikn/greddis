@@ -507,12 +507,14 @@ func BenchmarkGreddisPubSub(b *testing.B) {
 		return
 	}
 	var buf = &bytes.Buffer{}
+	var msg *greddis.Message
 	for i := 0; i < b.N; i++ {
 		client.Publish(ctx, "testtopic", "hellotest")
-		msg := <-subs["testtopic"]
+		msg = <-subs["testtopic"]
 		msg.Result.Scan(buf)
 		buf.Reset()
 	}
+	// TODO it is not calling unsubscribe on the right connection here !!!!
 	client.Unsubscribe(ctx, "testtopic")
 }
 
