@@ -21,10 +21,6 @@ type RedisPattern string
 // SubscribeHandler always receives the topic it is subscribed to together with the message
 type SubscribeHandler func(ctx context.Context, topic string, message Result) error
 
-// Allow client to be instantiated in 3 modes
-// 1. with subscriber started before Subscribe call
-// 2. lazy loading subscriber on first Subscribe
-// 3. disallow calling Subscribe
 type PubSubOpts struct {
 	PingInterval time.Duration
 	ReadTimeout  time.Duration
@@ -69,11 +65,7 @@ func NewClient(ctx context.Context, opts *PoolOptions) (SubClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	subConn, err := pool.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-	subMngr := newSubManager(subConn, &PubSubOpts{
+	subMngr := newSubManager(pool, &PubSubOpts{
 		PingInterval: 5 * time.Second,
 		ReadTimeout:  opts.ReadTimeout,
 		InitBufSize:  opts.InitialBufSize,
@@ -179,7 +171,7 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 }
 
 func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
-	chanMap, err := c.subMngr.subscribe(ctx, topics...)
+	chanMap, err := c.subMngr.Subscribe(ctx, topics...)
 	if err != nil {
 		c.subMngr.conn.cmd.reset(c.subMngr.conn.conn)
 		return nil, err

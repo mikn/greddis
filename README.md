@@ -28,6 +28,12 @@ And to run the integration tests
 ```
 $ go test -tags=integration
 ```
+To generate a coverage report
+```
+$ go test -coverprofile=coverage.out
+$ go tool cover -html=coverage.out
+```
+
 To run the benchmarks
 ```
 $ cd benchmarks/

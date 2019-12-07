@@ -514,7 +514,6 @@ func BenchmarkGreddisPubSub(b *testing.B) {
 		msg.Result.Scan(buf)
 		buf.Reset()
 	}
-	// TODO it is not calling unsubscribe on the right connection here !!!!
 	client.Unsubscribe(ctx, "testtopic")
 }
 

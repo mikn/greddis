@@ -117,14 +117,14 @@ func TestReadInteger(t *testing.T) {
 
 func TestReadBulkString(t *testing.T) {
 	t.Run("normal string", func(t *testing.T) {
-		var buf = make([]byte, 100)
+		var buf = make([]byte, 0, 100)
 		var b = bytes.NewBuffer([]byte("$11\r\ntest string\r\n"))
 		var out, err = readBulkString(b, buf)
 		require.NoError(t, err)
 		require.Equal(t, []byte("test string"), out)
 	})
 	t.Run("nil string", func(t *testing.T) {
-		var buf = make([]byte, 100)
+		var buf = make([]byte, 0, 100)
 		var b = bytes.NewBuffer([]byte("$-1\r\n"))
 		var out, err = readBulkString(b, buf)
 		require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestReadBulkString(t *testing.T) {
 
 func TestReadSimpleString(t *testing.T) {
 	t.Run("normal string", func(t *testing.T) {
-		var buf = make([]byte, 100)
+		var buf = make([]byte, 0, 100)
 		var b = bytes.NewBuffer([]byte("+test string\r\n"))
 		var out, err = readSimpleString(b, buf)
 		require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestReadSimpleString(t *testing.T) {
 
 func TestReadSwitch(t *testing.T) {
 	t.Run("error string", func(t *testing.T) {
-		var buf = make([]byte, 100)
+		var buf = make([]byte, 0, 100)
 		var r = bytes.NewBuffer([]byte("-test string\r\n"))
 		var out, err = readSwitch('+', unmarshalSimpleString, r, buf)
 		require.Nil(t, out)
@@ -161,14 +161,14 @@ func TestReadSwitch(t *testing.T) {
 		var ctrl = gomock.NewController(t)
 		defer ctrl.Finish()
 		var mockReader = mock_io.NewMockReader(ctrl)
-		var buf = make([]byte, 100)
+		var buf = make([]byte, 0, 100)
 		mockReader.EXPECT().Read(gomock.Any()).Return(0, errors.New("EOF"))
 		var msg, err = readSwitch('+', unmarshalSimpleString, mockReader, buf)
 		require.Nil(t, msg)
 		require.Error(t, err)
 	})
 	t.Run("error on error string unmarshal", func(t *testing.T) {
-		var buf = make([]byte, 100)
+		var buf = make([]byte, 0, 100)
 		var r = bytes.NewBuffer([]byte("-test string"))
 		var out, err = readSwitch('+', unmarshalSimpleString, r, buf)
 		require.Nil(t, out)

@@ -17,14 +17,14 @@ func unmarshalCount(r io.Reader, buf []byte) (int, int, error) {
 	// zero-alloc conversion, ref: https://golang.org/src/strings/builder.go#L45
 	size, err := strconv.Atoi(*(*string)(unsafe.Pointer(&intBuf)))
 	if size < 0 || err != nil {
-		return 0, 0, err
+		return 0, -1, err
 	}
 	return len(intBuf) + len(sep), size, nil
 }
 
 func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
 	sizeLen, size, err := unmarshalCount(r, buf)
-	if err != nil {
+	if err != nil || size == -1 {
 		return nil, err
 	}
 	size = size + 2
@@ -98,7 +98,6 @@ type readFunc func(io.Reader, []byte) ([]byte, error)
 func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte, error) {
 	var i int
 	var err error
-	// TODO should maybe not call read here?
 	i = len(buf)
 	if i == 0 {
 		buf = buf[:cap(buf)]

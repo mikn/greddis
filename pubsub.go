@@ -84,8 +84,8 @@ func (mp *msgPool) Get() *Message {
 func (mp *msgPool) New() *Message {
 	res := NewResult(make([]byte, 0, mp.initBufSize))
 	m := &Message{
-		Result:  res,
-		array:   &ArrayResult{res: res, buf: res.value},
+		Result: res,
+		array:  &ArrayResult{res: res, buf: res.value},
 	}
 	res.finish = func() {
 		m.array.reset()
@@ -101,12 +101,12 @@ func (mp *msgPool) Put(m *Message) {
 	}
 }
 
-func newSubManager(conn *conn, opts *PubSubOpts) *subManager {
+func newSubManager(pool internalPool, opts *PubSubOpts) *subManager {
 	mngr := &subManager{
 		opts:      opts,
-		array:     &internalArray{arr: &ArrayResult{res: NewResult(conn.buf)}},
+		array:     &internalArray{arr: &ArrayResult{res: NewResult(nil)}},
 		chans:     &sync.Map{},
-		conn:      conn,
+		connPool:  pool,
 		msgPool:   newMsgPool(opts.InitBufSize),
 		writeLock: &sync.Mutex{},
 		readChan:  make(chan string, 10),
@@ -120,10 +120,19 @@ type subManager struct {
 	array     *internalArray
 	chans     *sync.Map
 	conn      *conn
+	connPool  internalPool
 	msgPool   *msgPool
 	opts      *PubSubOpts
 	writeLock *sync.Mutex
 	readChan  chan string
+}
+
+func (s *subManager) getConn(ctx context.Context) (*conn, error) {
+	var err error
+	if s.conn == nil {
+		s.conn, err = s.connPool.Get(ctx)
+	}
+	return s.conn, err
 }
 
 func (s *subManager) tryRead(ctx context.Context, c *conn) (*Message, error) {
@@ -149,12 +158,6 @@ func (s *subManager) tryRead(ctx context.Context, c *conn) (*Message, error) {
 	return m, nil
 }
 
-func readReply(c *conn, a *internalArray) {
-}
-
-// design
-// msg from server -> get msg struct from pool -> read into msg buffer -> send msg buffer down to channel ->
-// user calls Result.Scan -> msg struct goes back to pool
 func (s *subManager) Listen(ctx context.Context, c *conn) {
 	s.conn = c
 	var count int
@@ -202,15 +205,19 @@ func (s *subManager) Listen(ctx context.Context, c *conn) {
 }
 
 // Design publish command -> publish to channel that we're expecting a read, wait for return on second chan
-func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
+func (s *subManager) Subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
 	if !s.listening {
-		go s.Listen(ctx, s.conn)
+		conn, err := s.getConn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		go s.Listen(ctx, conn)
 		s.listening = true
 	}
 	subs := make([]*subscription, len(topics))
 	chanMap := make(MessageChanMap, len(topics))
-	cmd := s.conn.cmd
 	s.writeLock.Lock()
+	cmd := s.conn.cmd
 	var subType int
 	for i, topic := range topics {
 		var sub *subscription
@@ -234,19 +241,20 @@ func (s *subManager) subscribe(ctx context.Context, topics ...interface{}) (Mess
 		default:
 			return nil, fmt.Errorf("Wrong type! Expected RedisPattern or string, but received: %T", d)
 		}
+		s.readChan <- sub.topic
 		cmd.add(sub.topic)
 		subs[i] = sub
+		chanMap[sub.topic] = sub.msgChan
 	}
 	var err error
 	s.conn.buf, err = cmd.flush()
-	for _, sub := range subs {
-		s.readChan <- sub.topic
-		s.chans.Store(sub.topic, sub)
-		chanMap[sub.topic] = sub.msgChan
-	}
 	s.writeLock.Unlock()
 	if err != nil {
 		return nil, err
+	}
+	// Need to store the subscriptions after we flush the command so we only store valid subscriptions
+	for _, sub := range subs {
+		s.chans.Store(sub.topic, sub)
 	}
 	// TODO If subscriptionCount drops to 0, we can hand back the connection and kill our poor listener
 	// this depends on the configuration of the subscriber portion
