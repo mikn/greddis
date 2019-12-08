@@ -277,14 +277,39 @@ func (s *subManager) dispatch(ctx context.Context, m *Message) {
 
 func (s *subManager) Unsubscribe(ctx context.Context, topics ...interface{}) error {
 	// TODO support a toggle to kill the loop so that when subscription count reaches 0, it exits cleanly
-	unsubscribe(ctx, s.conn, topics...)
+	conn, err := s.getConn(ctx)
+	if err != nil {
+		return err
+	}
+	c := conn.cmd
+	var subType int
 	for _, topic := range topics {
 		switch d := topic.(type) {
 		case RedisPattern:
-			s.chans.Delete(d)
+			if subType == 0 {
+				subType = subPattern
+				c = c.start(c.buf, len(topics)+1).add("PUNSUBSCRIBE")
+			} else if subType != 0 && subType != subPattern {
+				return ErrMixedTopicTypes
+			}
+			c.add(string(d))
+			s.chans.Delete(string(d))
 		case string:
+			if subType == 0 {
+				subType = subTopic
+				c = c.start(c.buf, len(topics)+1).add("UNSUBSCRIBE")
+			} else if subType != 0 && subType != subTopic {
+				return ErrMixedTopicTypes
+			}
+			c.add(d)
 			s.chans.Delete(d)
+		default:
+			return fmt.Errorf("Wrong type! Expected RedisPattern or string, but received: %T", d)
 		}
+	}
+	c.buf, err = c.flush()
+	if err != nil {
+		return err
 	}
 	return nil
 }

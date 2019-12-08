@@ -165,7 +165,14 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	if err != nil {
 		return 0, err
 	}
-	i, err := publish(ctx, conn, topic, value)
+	err = conn.cmd.start(conn.buf, 3).add("PUBLISH").add(topic).addUnsafe(value)
+	if err != nil {
+		conn.cmd.reset(conn.conn)
+		return 0, err
+	} else {
+		conn.buf, err = conn.cmd.flush()
+	}
+	i, err := readInteger(conn.conn, conn.buf)
 	c.pool.Put(ctx, conn)
 	return i, err
 }
