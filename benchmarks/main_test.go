@@ -462,6 +462,27 @@ func redigoSet(addr string, key string, value string) func(*testing.B) {
 	}
 }
 
+func greddisPubSub(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		var ctx = context.Background()
+		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
+		subs, err := client.Subscribe(ctx, key)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		var buf = &bytes.Buffer{}
+		var msg *greddis.Message
+		for i := 0; i < b.N; i++ {
+			client.Publish(ctx, key, value)
+			msg = <-subs[key]
+			msg.Result.Scan(buf)
+			buf.Reset()
+		}
+		client.Unsubscribe(ctx, key)
+	}
+}
+
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 type testFunc struct {
@@ -479,12 +500,13 @@ func RandStringBytes(n int) string {
 
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
-		testFunc{name: "GoRedisGet", f: goredisGet},
-		testFunc{name: "GoRedisSet", f: goredisSet},
-		testFunc{name: "RedigoGet", f: redigoGet},
-		testFunc{name: "RedigoSet", f: redigoSet},
-		testFunc{name: "GreddisGet", f: greddisGet},
-		testFunc{name: "GreddisSet", f: greddisSet},
+		testFunc{name: "GreddisPubSub", f: greddisPubSub},
+		//testFunc{name: "GoRedisGet", f: goredisGet},
+		//testFunc{name: "GoRedisSet", f: goredisSet},
+		//testFunc{name: "RedigoGet", f: redigoGet},
+		//testFunc{name: "RedigoSet", f: redigoSet},
+		//testFunc{name: "GreddisGet", f: greddisGet},
+		//testFunc{name: "GreddisSet", f: greddisSet},
 	}
 	var sizes = []int{1000, 10000, 100000, 10000000}
 	for _, f := range funcs {

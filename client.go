@@ -18,9 +18,6 @@ var (
 // RedisPattern is a string that contains what is considered a pattern according to the spec here: https://redis.io/commands/KEYS
 type RedisPattern string
 
-// SubscribeHandler always receives the topic it is subscribed to together with the message
-type SubscribeHandler func(ctx context.Context, topic string, message Result) error
-
 type PubSubOpts struct {
 	PingInterval time.Duration
 	ReadTimeout  time.Duration
@@ -180,7 +177,6 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
 	chanMap, err := c.subMngr.Subscribe(ctx, topics...)
 	if err != nil {
-		c.subMngr.conn.cmd.reset(c.subMngr.conn.conn)
 		return nil, err
 	}
 	return chanMap, nil
@@ -189,7 +185,6 @@ func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (MessageC
 func (c *client) Unsubscribe(ctx context.Context, topics ...interface{}) error {
 	err := c.subMngr.Unsubscribe(ctx, topics...)
 	if err != nil {
-		c.subMngr.conn.cmd.reset(c.subMngr.conn.conn)
 		return err
 	}
 	return err
