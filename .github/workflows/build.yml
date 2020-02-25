@@ -17,13 +17,13 @@ jobs:
     - name: build
       run: go build .
     - name: scan license
-      run: "GOPATH=$(go env GOPATH) fossa analyze"
+      run: "fossa analyze"
       env:
         FOSSA_API_KEY: ${{secrets.FOSSA_TOKEN}}
     - name: test
       run: go test . -race -coverprofile=coverage.txt -covermode=atomic
     - name: wait for license scan results
-      run: "GOPATH=$(go env GOPATH) fossa test"
+      run: "fossa test"
       env:
         FOSSA_API_KEY: ${{secrets.FOSSA_TOKEN}}
     - name: upload coverage to codecov
