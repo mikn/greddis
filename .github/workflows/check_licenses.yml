@@ -1,0 +1,25 @@
+name: FOSSA
+on: [push]
+jobs:
+  check_licenses:
+    name: Check Licenses
+    steps:
+    - name: Set up Go 1.13
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.13
+      id: go
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v1
+    - name: install fossa-cli
+      run: "curl -H 'Cache-Control: no-cache' https://raw.githubusercontent.com/fossas/fossa-cli/master/install.sh | bash"
+    - name: Build project
+      run: go build .
+    - name: scan license
+      run: GOPATH=$(go env GOPATH) fossa analyze
+      env:
+        FOSSA_API_KEY: ${{secrets.FOSSA_TOKEN}}
+    - name: wait for license scan results
+      run: GOPATH=$(go env GOPATH) fossa test
+      env:
+        FOSSA_API_KEY: ${{secrets.FOSSA_TOKEN}}
