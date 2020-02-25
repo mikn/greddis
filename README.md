@@ -2,6 +2,7 @@
 
 [![Build Status](https://github.com/mikn/greddis/workflows/build/badge.svg)](https://github.com/mikn/greddis/actions)
 [![codecov](https://codecov.io/gh/mikn/greddis/branch/master/graph/badge.svg)](https://codecov.io/gh/mikn/greddis)
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/mikn/greddis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/mikn/greddis/alerts/)
 [![FOSSA Status](https://app.fossa.com/api/projects/custom%2B13944%2Fgreddis.svg?type=shield)](https://app.fossa.com/projects/custom%2B13944%2Fgreddis?ref=badge_shield)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mikn/greddis)](https://goreportcard.com/report/github.com/mikn/greddis)
 [![Go doc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://godoc.org/github.com/mikn/greddis)
