@@ -186,17 +186,17 @@ func TestClientSet(t *testing.T) {
 		cancel()
 	})
 	t.Run("set string", func(t *testing.T) {
-		var ctx, cancel = context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		var ctrl = gomock.NewController(t)
+		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		var mockConn = mock_net.NewMockConn(ctrl)
-		var opts = &greddis.PoolOptions{
+		mockConn := mock_net.NewMockConn(ctrl)
+		opts := &greddis.PoolOptions{
 			Dial: func(ctx context.Context) (net.Conn, error) {
 				return mockConn, nil
 			},
 		}
-		var buf = make([]byte, 0, 4096)
+		buf := make([]byte, 0, 4096)
 		buf = append(buf, []byte("*3\r\n$3\r\nSET\r\n$7\r\ntestkey\r\n$11\r\ntest string\r\n")...)
 		mockConn.EXPECT().Write(buf).Return(len(buf), nil)
 		mockConn.EXPECT().SetReadDeadline(gomock.Any())

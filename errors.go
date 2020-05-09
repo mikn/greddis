@@ -1,6 +1,9 @@
 package greddis
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrTimeout error when waiting for data from Redis
 var ErrTimeout = errors.New("Timed out whilst waiting for data")
@@ -31,6 +34,11 @@ var ErrNoData = errors.New("No data was read")
 
 // ErrMixedTopicTypes is given when you pass in arguments of both RedisPattern and String
 var ErrMixedTopicTypes = errors.New("All the topics need to be either of type string or of RedisPattern, but not of both")
+
+// ErrWrongType is returned when the function receives an unsupported type
+func ErrWrongType(v interface{}, expected string) error {
+	return fmt.Errorf("Received an unsupported type of %t, expected %s", v, expected)
+}
 
 type ErrRetry struct {
 	Err error

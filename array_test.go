@@ -1,4 +1,4 @@
-package greddis
+package greddis_test
 
 import (
 	"bufio"
@@ -8,33 +8,28 @@ import (
 	"testing"
 
 	gomock "github.com/golang/mock/gomock"
+	"github.com/mikn/greddis"
 	"github.com/mikn/greddis/mocks/mock_driver"
 	"github.com/stretchr/testify/require"
 )
 
 //go:generate mockgen -destination ./mocks/mock_driver/mock_valuer.go database/sql/driver Valuer
-func TestWriteCommand(t *testing.T) {
+func TestArrayWriter(t *testing.T) {
 	t.Run("setup", func(t *testing.T) {
-		var out = &bytes.Buffer{}
-		var origBuf = make([]byte, 1000)
-		var cmd = &command{bufw: bufio.NewWriter(out)}
-		cmd.start(origBuf, 2)
-		cmd.add("GET")
-		cmd.add("testkey")
-		cmd.flush()
+		out := &bytes.Buffer{}
+		arrw := greddis.NewArrayWriter(bufio.NewWriter(out))
+		arrw.Init(2).Add("GET", "testkey")
+		arrw.Flush()
 		require.Equal(t, "*2\r\n$3\r\nGET\r\n$7\r\ntestkey\r\n", out.String())
 	})
 	t.Run("length mismatch", func(t *testing.T) {
-		var out = &bytes.Buffer{}
-		var origBuf = make([]byte, 1000)
-		var cmd = &command{bufw: bufio.NewWriter(out)}
-		cmd.start(origBuf, 3)
-		cmd.add("GET")
-		cmd.add("testkey")
-		_, err := cmd.flush()
+		out := &bytes.Buffer{}
+		arrw := greddis.NewArrayWriter(bufio.NewWriter(out))
+		arrw.Init(3).Add("GET", "testkey")
+		err := arrw.Flush()
 		require.Error(t, err)
 	})
-	type testUnsafe struct {
+	type testAdd struct {
 		name   string
 		value  interface{}
 		result []byte
@@ -42,23 +37,18 @@ func TestWriteCommand(t *testing.T) {
 	strVal := "hello"
 	byteVal := []byte("hello")
 	intVal := 55
-	tests := []testUnsafe{
-		{"string", "hello", []byte("*1\r\n$5\r\nhello\r\n")},
-		{"[]byte", []byte("hello"), []byte("*1\r\n$5\r\nhello\r\n")},
-		{"int", 55, []byte("*1\r\n$2\r\n55\r\n")},
+	tests := []testAdd{
 		{"*string", &strVal, []byte("*1\r\n$5\r\nhello\r\n")},
 		{"*[]byte", &byteVal, []byte("*1\r\n$5\r\nhello\r\n")},
 		{"*int", &intVal, []byte("*1\r\n$2\r\n55\r\n")},
 	}
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("addUnsafe_%s", test.name), func(t *testing.T) {
-			var out = &bytes.Buffer{}
-			var origBuf = make([]byte, 1000)
-			var cmd = &command{bufw: bufio.NewWriter(out)}
-			cmd.start(origBuf, 1)
-			err := cmd.addUnsafe(test.value)
+		t.Run(fmt.Sprintf("Add_%s", test.name), func(t *testing.T) {
+			out := &bytes.Buffer{}
+			arrw := greddis.NewArrayWriter(bufio.NewWriter(out))
+			err := arrw.Init(1).Add(test.value)
 			require.NoError(t, err)
-			_, err = cmd.flush()
+			err = arrw.Flush()
 			require.NoError(t, err)
 			require.Equal(t, test.result, out.Bytes())
 		})
@@ -68,13 +58,11 @@ func TestWriteCommand(t *testing.T) {
 		defer ctrl.Finish()
 		var mockValuer = mock_driver.NewMockValuer(ctrl)
 		mockValuer.EXPECT().Value().Return([]byte("55"), nil)
-		var out = &bytes.Buffer{}
-		var origBuf = make([]byte, 1000)
-		var cmd = &command{bufw: bufio.NewWriter(out)}
-		cmd.start(origBuf, 1)
-		err := cmd.addUnsafe(mockValuer)
+		out := &bytes.Buffer{}
+		arrw := greddis.NewArrayWriter(bufio.NewWriter(out))
+		err := arrw.Init(1).Add(mockValuer)
 		require.NoError(t, err)
-		_, err = cmd.flush()
+		err = arrw.Flush()
 		require.NoError(t, err)
 		require.Equal(t, []byte("*1\r\n$2\r\n55\r\n"), out.Bytes())
 	})
@@ -83,11 +71,9 @@ func TestWriteCommand(t *testing.T) {
 		defer ctrl.Finish()
 		var mockValuer = mock_driver.NewMockValuer(ctrl)
 		mockValuer.EXPECT().Value().Return(nil, errors.New("EOF"))
-		var out = &bytes.Buffer{}
-		var origBuf = make([]byte, 1000)
-		var cmd = &command{bufw: bufio.NewWriter(out)}
-		cmd.start(origBuf, 1)
-		err := cmd.addUnsafe(mockValuer)
+		out := &bytes.Buffer{}
+		arrw := greddis.NewArrayWriter(bufio.NewWriter(out))
+		err := arrw.Init(1).Add(mockValuer)
 		require.Error(t, err)
 	})
 }

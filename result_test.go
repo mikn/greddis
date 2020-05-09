@@ -9,7 +9,12 @@ import (
 	"github.com/mikn/greddis"
 	"github.com/mikn/greddis/mocks/mock_greddis"
 	"github.com/mikn/greddis/mocks/mock_io"
+	//"github.com/mikn/greddis/mocks/mock_net"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	TEST_BULK_STRING_CORRECT = []byte("$11\r\ntest string\r\n")
 )
 
 //go:generate mockgen -destination ./mocks/mock_io/mock_writer.go io Writer
@@ -72,5 +77,18 @@ func TestScan(t *testing.T) {
 		var target = &test{}
 		var err = res.Scan(target)
 		require.Error(t, err)
+	})
+}
+
+func TestArrayResult(t *testing.T) {
+	//ctrl := gomock.NewController(t)
+	//mockConn := mock_net.NewMockConn(ctrl)
+	buf := make([]byte, 0, 4096)
+	buf = append(buf, TEST_BULK_STRING_CORRECT...)
+	//arrResult := greddis.NewArrayResult(buf, mockConn, greddis.NewResult(buf))
+
+	t.Run("Next", func(t *testing.T) {
+		t.Run("bulk string", func(t *testing.T) {
+		})
 	})
 }

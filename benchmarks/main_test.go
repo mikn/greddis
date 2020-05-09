@@ -59,7 +59,7 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 	var fd, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
 	var dst = syscall.SockaddrInet4{
 		Port: 6379,
-		Addr: [4]byte{172, 17, 0, 2},
+		Addr: [4]byte{127, 0, 0, 1},
 	}
 	if err != nil {
 		panic(err)
@@ -464,6 +464,7 @@ func redigoSet(addr string, key string, value string) func(*testing.B) {
 
 func greddisPubSub(addr string, key string, value string) func(*testing.B) {
 	return func(b *testing.B) {
+		b.ReportAllocs()
 		var ctx = context.Background()
 		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
 		subs, err := client.Subscribe(ctx, key)
@@ -500,13 +501,13 @@ func RandStringBytes(n int) string {
 
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
-		testFunc{name: "GreddisPubSub", f: greddisPubSub},
+		//testFunc{name: "GreddisPubSub", f: greddisPubSub},
 		//testFunc{name: "GoRedisGet", f: goredisGet},
 		//testFunc{name: "GoRedisSet", f: goredisSet},
 		//testFunc{name: "RedigoGet", f: redigoGet},
 		//testFunc{name: "RedigoSet", f: redigoSet},
-		//testFunc{name: "GreddisGet", f: greddisGet},
-		//testFunc{name: "GreddisSet", f: greddisSet},
+		testFunc{name: "GreddisGet", f: greddisGet},
+		testFunc{name: "GreddisSet", f: greddisSet},
 	}
 	var sizes = []int{1000, 10000, 100000, 10000000}
 	for _, f := range funcs {

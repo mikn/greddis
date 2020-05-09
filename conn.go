@@ -9,7 +9,7 @@ import (
 
 type conn struct {
 	conn        net.Conn
-	cmd         *command
+	arrw        *ArrayWriter
 	res         *Result
 	buf         []byte
 	initBufSize int
@@ -19,11 +19,11 @@ type conn struct {
 }
 
 func newConn(c net.Conn, bufSize int) *conn {
-	buf := make([]byte, bufSize)
+	buf := make([]byte, 0, bufSize)
 	return &conn{
 		conn:        c,
 		buf:         buf,
-		cmd:         &command{bufw: bufio.NewWriter(c)},
+		arrw:        NewArrayWriter((bufio.NewWriter(c))),
 		res:         NewResult(buf),
 		initBufSize: bufSize,
 		created:     time.Now(),

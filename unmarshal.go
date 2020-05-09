@@ -27,7 +27,7 @@ func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
 	if err != nil || size == -1 {
 		return nil, err
 	}
-	size = size + 2
+	size = size + len(sep)
 	oldBuf := buf
 	// if there's not enough space, create a new []byte buffer
 	if size-cap(buf) > 0 {
@@ -45,25 +45,28 @@ func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
 		}
 		buf = buf[:size]
 	}
-	if !bytes.Equal(buf[size-2:size], sep) {
+	if !bytes.Equal(buf[size-len(sep):size], sep) {
 		return buf, ErrMalformedString
 	}
-	return buf[:size-2], nil
+	return buf[:size-len(sep)], nil
 }
 
 func unmarshalSimpleString(r io.Reader, buf []byte) ([]byte, error) {
+	readBytes := 0
 	for {
-		for i := 0; i < len(buf)-1; i++ {
+		for i := readBytes; i < len(buf)-1; i++ {
 			if buf[i] == '\r' && buf[i+1] == '\n' {
 				return buf[:i], nil
 			}
 		}
 		origLen := len(buf)
 		if origLen >= cap(buf) {
+			// TODO this is a naive way if expanding the buffer
 			buf = append(buf, make([]byte, cap(buf))...)
 		}
 		readBuf := buf[origLen:cap(buf)]
-		_, err := r.Read(readBuf)
+		readLen, err := r.Read(readBuf)
+		readBytes += readLen
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +102,8 @@ func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte
 	var i int
 	var err error
 	i = len(buf)
-	if i == 0 {
+	for i == 0 {
+
 		buf = buf[:cap(buf)]
 		i, err = r.Read(buf)
 		if err != nil {
@@ -123,15 +127,14 @@ func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte
 	}
 }
 
-func readArray(r io.Reader, arrResult *ArrayResult) (*ArrayResult, error) {
+func readArray(r io.Reader, arrResult *ArrayReader) (*ArrayReader, error) {
 	_, err := readSwitch('*', func(r io.Reader, b []byte) ([]byte, error) {
 		sizeLen, size, err := unmarshalCount(r, b)
 		if err != nil {
 			return nil, err
 		}
 		copy(b, b[sizeLen:])
-		arrResult.length = size
-		arrResult.buf = b
+		arrResult.Init(b, size)
 		return nil, nil
 
 	}, r, arrResult.buf)

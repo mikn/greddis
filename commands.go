@@ -7,8 +7,11 @@ import (
 )
 
 func ping(ctx context.Context, conn *conn) (err error) {
-	conn.cmd.start(conn.buf, 1).add("PING")
-	conn.buf, err = conn.cmd.flush()
+	conn.arrw.Init(1).Add("PING")
+	err = conn.arrw.Flush()
+	if err != nil {
+		return err
+	}
 	reply, err := readSimpleString(conn.conn, conn.buf)
 	if err != nil {
 		return err

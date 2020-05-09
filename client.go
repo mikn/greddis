@@ -62,7 +62,7 @@ func NewClient(ctx context.Context, opts *PoolOptions) (SubClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	subMngr := newSubManager(pool, &PubSubOpts{
+	subMngr := newSubscriptionManager(pool, &PubSubOpts{
 		PingInterval: 5 * time.Second,
 		ReadTimeout:  opts.ReadTimeout,
 		InitBufSize:  opts.InitialBufSize,
@@ -78,7 +78,7 @@ type client struct {
 	pool     internalPool
 	resBuf   *Result
 	poolOpts *PoolOptions
-	subMngr  *subManager
+	subMngr  *subscriptionManager
 }
 
 func (c *client) Get(ctx context.Context, key string) (*Result, error) {
@@ -86,11 +86,11 @@ func (c *client) Get(ctx context.Context, key string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.cmd.start(conn.buf, 2).add("GET").add(key)
-	conn.buf, err = conn.cmd.flush()
+	conn.arrw.Init(2).Add("GET", key)
+	err = conn.arrw.Flush()
 	if err != nil {
 		c.pool.Put(ctx, conn)
-		conn.cmd.reset(conn.conn)
+		conn.arrw.Reset(conn.conn)
 		return nil, err
 	}
 	conn.buf, err = readBulkString(conn.conn, conn.buf[:0])
@@ -109,23 +109,22 @@ func (c *client) Set(ctx context.Context, key string, value driver.Value, ttl in
 		return err
 	}
 	if ttl > 0 {
-		err = conn.cmd.start(conn.buf, 5).add("SET").add(key).addUnsafe(value)
-		conn.cmd.add("EX").add(ttl)
+		err = conn.arrw.Init(5).Add("SET", key, value, "EX", ttl)
 	} else {
-		err = conn.cmd.start(conn.buf, 3).add("SET").add(key).addUnsafe(value)
+		err = conn.arrw.Init(3).Add("SET", key, value)
 	}
 	if err != nil {
 		c.pool.Put(ctx, conn)
-		conn.cmd.reset(conn.conn)
+		conn.arrw.Reset(conn.conn)
 		return err
 	}
-	conn.buf, err = conn.cmd.flush()
+	err = conn.arrw.Flush()
 	if err != nil {
 		c.pool.Put(ctx, conn)
-		conn.cmd.reset(conn.conn)
+		conn.arrw.Reset(conn.conn)
 		return err
 	}
-	_, err = readSimpleString(conn.conn, conn.buf)
+	conn.buf, err = readSimpleString(conn.conn, conn.buf[:0])
 	c.pool.Put(ctx, conn)
 	return err
 }
@@ -135,10 +134,10 @@ func (c *client) Del(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	conn.cmd.start(conn.buf, 2).add("DEL").add(key)
-	conn.buf, err = conn.cmd.flush()
+	conn.arrw.Init(2).Add("DEL", key)
+	err = conn.arrw.Flush()
 	if err != nil {
-		conn.cmd.reset(conn.conn)
+		conn.arrw.Reset(conn.conn)
 		c.pool.Put(ctx, conn)
 		return err
 	}
@@ -162,12 +161,12 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	if err != nil {
 		return 0, err
 	}
-	err = conn.cmd.start(conn.buf, 3).add("PUBLISH").add(topic).addUnsafe(value)
+	err = conn.arrw.Init(3).Add("PUBLISH", topic, value)
 	if err != nil {
-		conn.cmd.reset(conn.conn)
+		conn.arrw.Reset(conn.conn)
 		return 0, err
 	} else {
-		conn.buf, err = conn.cmd.flush()
+		err = conn.arrw.Flush()
 	}
 	i, err := readInteger(conn.conn, conn.buf)
 	c.pool.Put(ctx, conn)
