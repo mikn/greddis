@@ -12,7 +12,7 @@ func ping(ctx context.Context, conn *conn) (err error) {
 	if err != nil {
 		return err
 	}
-	reply, err := readSimpleString(conn.conn, conn.buf)
+	_, reply, err := readSimpleString(conn.conn, conn.buf)
 	if err != nil {
 		return err
 	}

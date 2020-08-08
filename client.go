@@ -86,14 +86,14 @@ func (c *client) Get(ctx context.Context, key string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.arrw.Init(2).Add("GET", key)
+	conn.arrw.Init(2).AddString("GET", key)
 	err = conn.arrw.Flush()
 	if err != nil {
 		c.pool.Put(ctx, conn)
 		conn.arrw.Reset(conn.conn)
 		return nil, err
 	}
-	conn.buf, err = readBulkString(conn.conn, conn.buf[:0])
+	_, conn.buf, err = readBulkString(conn.conn, conn.buf[:0])
 	if err != nil {
 		c.pool.Put(ctx, conn)
 		return nil, err
@@ -109,9 +109,9 @@ func (c *client) Set(ctx context.Context, key string, value driver.Value, ttl in
 		return err
 	}
 	if ttl > 0 {
-		err = conn.arrw.Init(5).Add("SET", key, value, "EX", ttl)
+		err = conn.arrw.Init(5).AddString("SET", key).Add(value, "EX", StrInt(ttl))
 	} else {
-		err = conn.arrw.Init(3).Add("SET", key, value)
+		err = conn.arrw.Init(3).AddString("SET", key).Add(value)
 	}
 	if err != nil {
 		c.pool.Put(ctx, conn)
@@ -124,7 +124,7 @@ func (c *client) Set(ctx context.Context, key string, value driver.Value, ttl in
 		conn.arrw.Reset(conn.conn)
 		return err
 	}
-	conn.buf, err = readSimpleString(conn.conn, conn.buf[:0])
+	_, conn.buf, err = readSimpleString(conn.conn, conn.buf[:0])
 	c.pool.Put(ctx, conn)
 	return err
 }
@@ -141,7 +141,7 @@ func (c *client) Del(ctx context.Context, key string) error {
 		c.pool.Put(ctx, conn)
 		return err
 	}
-	_, err = readSimpleString(conn.conn, conn.buf)
+	_, _, err = readSimpleString(conn.conn, conn.buf)
 	c.pool.Put(ctx, conn)
 	return err
 }
@@ -168,7 +168,7 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	} else {
 		err = conn.arrw.Flush()
 	}
-	i, err := readInteger(conn.conn, conn.buf)
+	_, i, err := readInteger(conn.conn, conn.buf)
 	c.pool.Put(ctx, conn)
 	return i, err
 }

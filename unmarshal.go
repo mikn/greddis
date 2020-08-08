@@ -9,105 +9,118 @@ import (
 	"unsafe"
 )
 
-func unmarshalCount(r io.Reader, buf []byte) (int, int, error) {
-	intBuf, err := unmarshalSimpleString(r, buf)
+func unmarshalCount(r io.Reader, buf []byte) (int, int, []byte, error) {
+	n, buf, err := unmarshalSimpleString(r, buf)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, buf, err
 	}
+	intBuf := buf[:n-len(sep)]
 	// zero-alloc conversion, ref: https://golang.org/src/strings/builder.go#L45
 	size, err := strconv.Atoi(*(*string)(unsafe.Pointer(&intBuf)))
-	if size < 0 || err != nil {
-		return 0, -1, err
+	if err != nil {
+		return 0, 0, buf, err
 	}
-	return len(intBuf) + len(sep), size, nil
+	return n, size, buf, nil
 }
 
-func unmarshalBulkString(r io.Reader, buf []byte) ([]byte, error) {
-	sizeLen, size, err := unmarshalCount(r, buf)
+func unmarshalBulkString(r io.Reader, buf []byte) (int, []byte, error) {
+	readBytes, size, buf, err := unmarshalCount(r, buf)
 	if err != nil || size == -1 {
-		return nil, err
+		return readBytes, nil, err
 	}
 	size = size + len(sep)
+	truncate := readBytes + size
 	oldBuf := buf
 	// if there's not enough space, create a new []byte buffer
+	if truncate-cap(buf) > 0 {
+		truncate = cap(oldBuf)
+	}
 	if size-cap(buf) > 0 {
 		buf = make([]byte, size)
 	}
 	// "remove" size prefix from []byte buffer
-	copy(buf, oldBuf[sizeLen:])
-	buf = buf[:len(oldBuf)-sizeLen]
+	if len(oldBuf) > 0 {
+		// TODO this is a waste of time
+		copy(buf, oldBuf[readBytes:truncate])
+		buf = buf[:len(oldBuf)-readBytes]
+	}
 	if len(buf) < size {
 		// only pass in the bytes we want read to (and are missing)
 		readBuf := buf[len(buf):size]
-		_, err = io.ReadFull(r, readBuf)
+		_, err := io.ReadFull(r, readBuf)
 		if err != nil {
-			return nil, err
+			return readBytes, nil, err
 		}
 		buf = buf[:size]
 	}
 	if !bytes.Equal(buf[size-len(sep):size], sep) {
-		return buf, ErrMalformedString
+		return readBytes, buf, ErrMalformedString
 	}
-	return buf[:size-len(sep)], nil
+	return readBytes + size, buf[:size-len(sep)], nil
 }
 
-func unmarshalSimpleString(r io.Reader, buf []byte) ([]byte, error) {
+func unmarshalSimpleString(r io.Reader, buf []byte) (int, []byte, error) {
 	readBytes := 0
 	for {
-		for i := readBytes; i < len(buf)-1; i++ {
-			if buf[i] == '\r' && buf[i+1] == '\n' {
-				return buf[:i], nil
+		for readBytes < len(buf)-1 {
+			if buf[readBytes] == '\r' && buf[readBytes+1] == '\n' {
+				return readBytes + 2, buf, nil
 			}
+			readBytes++
 		}
 		origLen := len(buf)
 		if origLen >= cap(buf) {
-			// TODO this is a naive way if expanding the buffer
+			// TODO this is a naive way of expanding the buffer
 			buf = append(buf, make([]byte, cap(buf))...)
 		}
 		readBuf := buf[origLen:cap(buf)]
-		readLen, err := r.Read(readBuf)
-		readBytes += readLen
+		i, err := r.Read(readBuf)
 		if err != nil {
-			return nil, err
+			return 0, nil, err
 		}
-		buf = append(buf, readBuf...)
+		buf = buf[:origLen+i]
 	}
 }
 
 // readInteger not sure it is the right choice here to actually return an int rather
 // than follow BulkString and SimpleString conventions
-func readInteger(r io.Reader, buf []byte) (i int, err error) {
-	buf, err = readSwitch(':', unmarshalSimpleString, r, buf)
+func readInteger(r io.Reader, buf []byte) (n int, i int, err error) {
+	n, buf, err = readSwitch(':', unmarshalSimpleString, r, buf)
 	if err != nil {
 		return
 	}
-	i, err = strconv.Atoi(*(*string)(unsafe.Pointer(&buf)))
+	intBuf := buf[:n-len(sep)-1]
+	i, err = strconv.Atoi(*(*string)(unsafe.Pointer(&intBuf)))
 	if err != nil {
 		return
 	}
 	return
 }
 
-func readBulkString(r io.Reader, buf []byte) ([]byte, error) {
+func readBulkString(r io.Reader, buf []byte) (int, []byte, error) {
 	return readSwitch('$', unmarshalBulkString, r, buf)
 }
 
-func readSimpleString(r io.Reader, buf []byte) ([]byte, error) {
-	return readSwitch('+', unmarshalSimpleString, r, buf)
+func readSimpleString(r io.Reader, buf []byte) (int, []byte, error) {
+	n, buf, err := readSwitch('+', unmarshalSimpleString, r, buf)
+	truncate := n - len(sep) - 1
+	if truncate < 0 {
+		truncate = 0
+	}
+	return n, buf[:truncate], err
 }
 
-type readFunc func(io.Reader, []byte) ([]byte, error)
+type readFunc func(io.Reader, []byte) (int, []byte, error)
 
-func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte, error) {
+func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) (int, []byte, error) {
 	var i int
 	var err error
 	i = len(buf)
 	for i == 0 {
-
 		buf = buf[:cap(buf)]
 		i, err = r.Read(buf)
 		if err != nil {
-			return nil, err
+			return i, nil, err
 		}
 	}
 	switch buf[0] {
@@ -115,27 +128,28 @@ func readSwitch(prefix byte, callback readFunc, r io.Reader, buf []byte) ([]byte
 		// TODO this may have performance impact on larger data sizes, as it is a memcopy
 		// But we want to make sure that the buf returned at the end is the same, so we need to
 		copy(buf, buf[1:i]) // remove prefix
-		return callback(r, buf[:i-1])
+		n, buf, err := callback(r, buf[:i-1])
+		return n + 1, buf, err // need to account for the prefix length as well
 	case '-':
-		str, err := unmarshalSimpleString(r, buf[1:i])
+		n, str, err := unmarshalSimpleString(r, buf[1:i])
 		if err != nil {
-			return nil, err
+			return n + 1, nil, err
 		}
-		return nil, errors.New(string(str))
+		return 1 + n, nil, errors.New(string(str))
 	default:
-		return nil, fmt.Errorf("Expected prefix '%s' or '-', but received '%s'", string(prefix), string(buf[0]))
+		return 0, nil, fmt.Errorf("Expected prefix '%s' or '-', but received '%s'", string(prefix), string(buf[0]))
 	}
 }
 
 func readArray(r io.Reader, arrResult *ArrayReader) (*ArrayReader, error) {
-	_, err := readSwitch('*', func(r io.Reader, b []byte) ([]byte, error) {
-		sizeLen, size, err := unmarshalCount(r, b)
+	_, _, err := readSwitch('*', func(r io.Reader, b []byte) (int, []byte, error) {
+		readBytes, size, b, err := unmarshalCount(r, b)
 		if err != nil {
-			return nil, err
+			return readBytes, nil, err
 		}
-		copy(b, b[sizeLen:])
+		copy(b, b[readBytes:])
 		arrResult.Init(b, size)
-		return nil, nil
+		return readBytes, nil, nil
 
 	}, r, arrResult.buf)
 	if err != nil {

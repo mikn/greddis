@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -56,7 +58,7 @@ func newMsgPool(initBufSize int) *msgPool {
 
 func (mp *msgPool) Get(r io.Reader) *Message {
 	msg := mp.msgs.Get().(*Message)
-	msg.array.r = r
+	msg.array.ResetReader(r)
 	return msg
 }
 
@@ -133,24 +135,31 @@ func (s *subscriptionManager) getConn(ctx context.Context) (*conn, error) {
 // tryRead - wait for a message to arrive
 // parseMessage - read message into Struct
 func (s *subscriptionManager) tryRead(ctx context.Context, buf []byte, c *conn) ([]byte, error) {
-	// Ahh, low-level reading is so much fun. Here we're waiting for a new message
-	c.conn.SetReadDeadline(time.Now().Add(s.opts.PingInterval))
-	readLen, err := c.conn.Read(buf[:cap(buf)])
-	buf = buf[:readLen]
-	// TODO when 1.15 is out, change this to this: https://github.com/golang/go/issues/31449
-	if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
-		// every time we time out, we send a ping to make sure the connection is still alive
-		c.conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout))
-		err = ping(ctx, c)
-		if err != nil {
-			return buf, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		// Ahh, low-level reading is so much fun. Here we're waiting for a new message
+		c.conn.SetReadDeadline(time.Now().Add(s.opts.PingInterval))
+		readLen, err := c.conn.Read(buf[:cap(buf)])
+		buf = buf[:readLen]
+		// TODO when 1.15 is out, change this to this: https://github.com/golang/go/issues/31449
+		if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
+			// every time we time out, we send a ping to make sure the connection is still alive
+			c.conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout))
+			err = ping(ctx, c)
+			if err != nil {
+				return buf, err
+			}
+			return buf, fmt.Errorf("Timed out whilst waiting for data: %w", ErrRetryable)
+		} else if err != nil {
+			return nil, err
 		}
-		return buf, ErrRetry{ErrTimeout}
+		if readLen == 0 {
+			return buf, fmt.Errorf("No data was read: %w", ErrRetryable) // TODO we should probably stop reading after a while here
+		}
+		return buf, nil
 	}
-	if readLen == 0 {
-		return buf, ErrRetry{ErrNoData} // TODO we should probably stop reading after a while here
-	}
-	return buf, nil
 }
 
 func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
@@ -160,59 +169,70 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 	var errs []error
 	var err error
 	for {
-		m.array.buf, err = s.tryRead(ctx, m.array.buf, c)
-		if err != nil {
-			var e ErrRetry
-			if errors.Is(err, &e) {
-				continue // if we are retrying, just skip the loop
-			}
-			// TODO Log here that the subscriber has stopped listening
+		select {
+		case <-ctx.Done():
+			log.Printf("%s\n", ctx.Err())
 			return
-		}
-		// we fill in the rest of the array here (no we don't - this function does not read the members)
-		m.array, err = readArray(c.conn, m.array)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		switch m.array.SwitchOnNext() {
-		case "pmessage":
-			m.array.Scan(&m.Pattern, &m.Topic)
-		case "message":
-			// TODO This causes an allocation because m.Topic is a string, which triggers a copy
-			// proposal: make it m.Topic() instead which returns a string from the []byte{} of m.topic
-			m.array.Scan(&m.Topic)
-		case "subscribe":
-			if err := m.array.Expect(<-s.readChan); err != nil {
-				errs = append(errs, err)
-			}
-			if err := m.array.Scan(&count); err != nil {
-				errs = append(errs, err)
-			}
-		case "psubscribe":
-			if err := m.array.Expect(<-s.readChan); err != nil {
-				errs = append(errs, err)
-			}
-			if err := m.array.Scan(&count); err != nil {
-				errs = append(errs, err)
-			}
-		case "unsubscribe":
-		case "punsubscribe":
 		default:
-			fmt.Printf("We shouldn't be here :( value: '%s'\n", string(m.array.res.value))
+			m.array.buf, err = s.tryRead(ctx, m.array.buf, c)
+			if err != nil {
+				if errors.Is(err, ErrRetryable) {
+					continue // if we are retrying, just skip the loop
+				}
+				return // TODO Log here that the subscriber has stopped listening
+			}
+			// we fill in the rest of the array here (no we don't - this function does not read the members)
+			m.array, err = readArray(c.conn, m.array)
+			if err != nil {
+				log.Printf("%s\n", err)
+				return
+			}
+			arrTopicCount := func() int { return int(math.Ceil(float64(m.array.Len())/2) - 1) }
+			switch m.array.SwitchOnNext() {
+			case "pmessage":
+				m.array.Scan(&m.Pattern, &m.Topic)
+			case "message":
+				// TODO This causes an allocation because m.Topic is a string, which triggers a copy
+				// proposal: make it m.Topic() instead which returns a string from the []byte of m.topic
+				m.array.Scan(&m.Topic)
+			case "psubscribe":
+				for i := 0; i < arrTopicCount(); i++ {
+					if err := m.array.Expect(<-s.readChan); err != nil {
+						errs = append(errs, err)
+					}
+					if err := m.array.Scan(&count); err != nil {
+						errs = append(errs, err)
+					}
+				}
+			case "subscribe":
+				for i := 0; i < arrTopicCount(); i++ {
+					if err := m.array.Expect(<-s.readChan); err != nil {
+						errs = append(errs, err)
+					}
+					if err := m.array.Scan(&count); err != nil {
+						errs = append(errs, err)
+					}
+				}
+			case "punsubscribe":
+			case "unsubscribe":
+			default:
+				log.Printf("We shouldn't be here :( value: '%s'\n", string(m.array.res.value))
+			}
+			for i, err := range errs {
+				log.Printf("Error %d - %s", i, err)
+			}
+			if m.array.Len() > m.array.pos {
+				s.dispatch(ctx, m)
+			}
 		}
-		for _, err := range errs {
-			fmt.Printf("count '%d'\n", count)
-			fmt.Printf("error: %T\n", err)
-			// TODO log errors here
-			continue
-		}
-		s.dispatch(ctx, m)
 	}
 }
 
 // Design publish command -> publish to channel that we're expecting a read, wait for return on second chan
 func (s *subscriptionManager) Subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {
+	if len(topics) == 0 {
+		return nil, errors.New("No topics given to subscribe to")
+	}
 	if !s.listening {
 		conn, err := s.getConn(ctx)
 		if err != nil {
@@ -223,32 +243,39 @@ func (s *subscriptionManager) Subscribe(ctx context.Context, topics ...interface
 	}
 	subs := make([]*subscription, len(topics))
 	chanMap := make(MessageChanMap, len(topics))
+
 	s.writeLock.Lock()
 	arrw := s.conn.arrw
 	var subType int
+	switch topics[0].(type) {
+	case RedisPattern:
+		subType = subPattern
+		arrw.Init(len(topics) + 1).AddString("PSUBSCRIBE")
+	case string:
+		subType = subTopic
+		arrw.Init(len(topics) + 1).AddString("SUBSCRIBE")
+	}
 	for i, topic := range topics {
 		var sub *subscription
 		switch d := topic.(type) {
 		case RedisPattern:
-			if subType == 0 {
-				subType = subPattern
-				arrw.Init(len(topics) + 1).Add("PSUBSCRIBE")
-			} else if subType != 0 && subType != subPattern {
+			if subType != subPattern {
 				return nil, ErrMixedTopicTypes
 			}
 			sub = newSubscription(d, s.opts.InitBufSize)
+			sub.subType = subPattern
+			sub.topic = string(d)
 		case string:
-			if subType == 0 {
-				subType = subTopic
-				arrw.Init(len(topics) + 1).Add("SUBSCRIBE")
-			} else if subType != 0 && subType != subTopic {
+			if subType != subTopic {
 				return nil, ErrMixedTopicTypes
 			}
 			sub = newSubscription(d, s.opts.InitBufSize)
+			sub.subType = subPattern
+			sub.topic = string(d)
 		default:
 			return nil, fmt.Errorf("Wrong type! Expected RedisPattern or string, but received: %T", d)
 		}
-		arrw.Add(sub.topic)
+		arrw.AddString(sub.topic)
 		subs[i] = sub
 		chanMap[sub.topic] = sub.msgChan
 	}
@@ -274,11 +301,15 @@ func (s *subscriptionManager) dispatch(ctx context.Context, m *Message) {
 	if m.array.Len() == 4 {
 		key = m.Pattern
 	}
+	m.array.prepare()
 	if sub, ok := s.chans.Load(key); ok {
 		select {
+		case <-ctx.Done():
+			return
 		case sub.(*subscription).msgChan <- m:
-		default: // TODO log that a message got discarded
 		}
+	} else {
+		log.Printf("no subsciption for topic: %s", key)
 	}
 }
 
@@ -295,20 +326,18 @@ func (s *subscriptionManager) Unsubscribe(ctx context.Context, topics ...interfa
 		case RedisPattern:
 			if subType == 0 {
 				subType = subPattern
-				arrw.Init(len(topics) + 1).Add("PUNSUBSCRIBE")
+				arrw.Init(len(topics)+1).AddString("PUNSUBSCRIBE", string(d))
 			} else if subType != 0 && subType != subPattern {
 				return ErrMixedTopicTypes
 			}
-			arrw.Add(string(d))
 			s.chans.Delete(string(d))
 		case string:
 			if subType == 0 {
 				subType = subTopic
-				arrw.Init(len(topics) + 1).Add("UNSUBSCRIBE")
+				arrw.Init(len(topics)+1).AddString("UNSUBSCRIBE", d)
 			} else if subType != 0 && subType != subTopic {
 				return ErrMixedTopicTypes
 			}
-			arrw.Add(d)
 			s.chans.Delete(d)
 		default:
 			return fmt.Errorf("Wrong type! Expected RedisPattern or string, but received: %T", d)

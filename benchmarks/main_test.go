@@ -501,13 +501,13 @@ func RandStringBytes(n int) string {
 
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
-		//testFunc{name: "GreddisPubSub", f: greddisPubSub},
+		testFunc{name: "GreddisPubSub", f: greddisPubSub},
 		//testFunc{name: "GoRedisGet", f: goredisGet},
 		//testFunc{name: "GoRedisSet", f: goredisSet},
 		//testFunc{name: "RedigoGet", f: redigoGet},
 		//testFunc{name: "RedigoSet", f: redigoSet},
-		testFunc{name: "GreddisGet", f: greddisGet},
-		testFunc{name: "GreddisSet", f: greddisSet},
+		//testFunc{name: "GreddisGet", f: greddisGet},
+		//testFunc{name: "GreddisSet", f: greddisSet},
 	}
 	var sizes = []int{1000, 10000, 100000, 10000000}
 	for _, f := range funcs {
