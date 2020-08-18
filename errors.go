@@ -36,3 +36,8 @@ var ErrMixedTopicTypes = errors.New("All the topics need to be either of type st
 func ErrWrongType(v interface{}, expected string) error {
 	return fmt.Errorf("Received an unsupported type of %t, expected %s", v, expected)
 }
+
+// ErrWrongToken is used internally in the Redis Reader when it checks whether the token expected and this is not the case
+func ErrWrongToken(expToken byte, token byte) error {
+	return fmt.Errorf("Expected token: %s but received %s", string(expToken), string(token))
+}

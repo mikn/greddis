@@ -2,7 +2,7 @@ package greddis
 
 import (
 	"bufio"
-	"bytes"
+	"container/list"
 	"database/sql/driver"
 	"fmt"
 	"io"
@@ -132,14 +132,14 @@ func (w *ArrayWriter) addItem(item interface{}) error {
 	switch d := item.(type) {
 	case string: // sigh, need this for fallthrough
 		w.addString(d)
+	case *string:
+		w.addString(d)
 	case []byte:
 		w.writeBytes(d)
 	case StrInt:
 		w.writeIntStr(int(d))
 	case int:
 		w.writeInt(d)
-	case *string:
-		w.addString(d)
 	case *[]byte:
 		w.writeBytes(*d)
 	case *int:
@@ -164,30 +164,30 @@ func (w *ArrayWriter) addItem(item interface{}) error {
 	return nil
 }
 
+// For ArrayReader we should consider using struct tags to scan all fields in one go
+// The only use for Redis Arrays currently is to scan full objects (excluding the value field)
+// and expect different kinds of values. Whilst currently I read straight from a channel the
+// channel name I expect, we could...?
+// ArrayReader.Init(reader) -> calls reader.ScanArray()
+
 type arrayReader interface {
-	Expect(values ...string) (res bool)
-	Init(buf []byte, size int) (self *ArrayReader)
+	Init(r *Reader) (self *ArrayReader)
 	Len() (length int)
-	Scan(dst ...interface{}) (err error)
-	SwitchOnItem() (value string)
+	Scan(value ...interface{})
 }
 
-func NewArrayReader(buf []byte, r io.Reader, res *Result) *ArrayReader {
+func NewArrayReader(r *Reader) *ArrayReader {
 	return &ArrayReader{
-		buf: buf,
-		r:   r,
-		res: res,
+		r:         r,
+		scanFuncs: list.New(),
 	}
 }
 
 type ArrayReader struct {
-	buf     []byte
-	r       io.Reader
-	length  int
-	pos     int
-	res     *Result
-	read    bool
-	prevLen int
+	r         *Reader
+	length    int
+	pos       int
+	scanFuncs *list.List
 }
 
 // Len returns the length of the ArrayReader
@@ -195,98 +195,48 @@ func (a *ArrayReader) Len() int {
 	return a.length
 }
 
-func (a *ArrayReader) Init(buf []byte, size int) *ArrayReader {
-	a.reset()
-	a.length = size
-	a.buf = buf
-	a.read = false
-	a.prevLen = 0
-	return a
+func (a *ArrayReader) Init(scanFuncs ...ScanFunc) error {
+	err := a.r.Next(ScanArray)
+	a.length = a.r.Len()
+	a.r.tokenLen = 0
+	a.scanFuncs.Init()
+	for _, scanFunc := range scanFuncs {
+		a.scanFuncs.PushBack(scanFunc)
+	}
+	return err
 }
 
-func (a *ArrayReader) ResetReader(r io.Reader) {
-	a.r = r
-}
-
-func (a *ArrayReader) reset() {
-	a.buf = a.buf[:0]
-	a.length = 0
-	a.pos = 0
-	a.prevLen = 0
-	a.res.value = nil
-	a.read = false
+func (r *ArrayReader) Next(scanFuncs ...ScanFunc) *ArrayReader {
+	for i := len(scanFuncs) - 1; i >= 0; i-- {
+		r.scanFuncs.PushFront(scanFuncs[i])
+	}
+	return r
 }
 
 // Next prepares the next row to be used by `Scan()`, it returns either a "no more rows" error or
 // a connection/read error will be wrapped.
-func (a *ArrayReader) prepare() (int, error) {
-	if !a.read {
-		a.next(a.buf, a.prevLen)
+func (r *ArrayReader) next() error {
+	if r.pos >= r.length {
+		return ErrNoMoreRows
 	}
-	// TODO Next should maybe not actually read the value into the result, but rather just prepare the buffers
-	if a.length > a.pos {
-		var i int
-		var err error
-		var readBytes int
-		i = len(a.buf)
-		for i == 0 {
-			a.buf = a.buf[:cap(a.buf)]
-			i, err = a.r.Read(a.buf)
-			if err != nil {
-				return i, err
-			}
-		}
-		char := a.buf[0]
-		if char == '$' {
-			readBytes, a.res.value, err = unmarshalBulkString(a.r, a.buf[1:i])
-			readBytes += 1
-		} else if char == ':' || char == '-' {
-			readBytes, a.res.value, err = unmarshalSimpleString(a.r, a.buf[1:i])
-			truncate := readBytes - len(sep)
-			if truncate < 0 {
-				truncate = 0
-			}
-			a.res.value = a.res.value[:truncate]
-			readBytes += 1
-		} else {
-			err = fmt.Errorf("Expected prefix '$', ':' or '-', but received '%s' full buffer: %s", string(a.buf[0]), a.buf)
-		}
-		a.pos++
-		// if we read more bytes than what was in a.buf, we triggered another read and a.buf is now stale
-		if readBytes > i-1 {
-			a.buf = a.res.value[:cap(a.res.value)]
-			readBytes -= 1 // we need to remove one since the a.res.value is 1 shorter than a.buf
-		}
-
-		a.prevLen = readBytes
-		a.read = false
-		return readBytes, err
+	scanFunc := r.scanFuncs.Front()
+	if r.scanFuncs.Len() > 1 {
+		r.scanFuncs.Remove(scanFunc)
 	}
-	return 0, ErrNoMoreRows
-}
-
-func (r *ArrayReader) next(buf []byte, i int) []byte {
-	r.read = true
-	if len(buf) >= i {
-		// TODO We should probably not do a copy here, we should be able to "slide along" the buffer instead
-		copy(buf, buf[i:])
-		buf = buf[:len(buf)-i]
-	}
-	return buf
+	r.pos++
+	return r.r.Next(scanFunc.Value.(ScanFunc))
 }
 
 // Scan operates the same as `Scan` on a single result, other than that it can take multiple dst variables
 func (r *ArrayReader) Scan(dst ...interface{}) error {
 	for _, d := range dst {
-		prevReadLen, err := r.prepare()
+		err := r.next()
 		if err != nil {
 			return err
 		}
-		if err := r.res.scan(d); err != nil {
+		if err := scan(r.r, d); err != nil {
 			return err
 		}
-		r.buf = r.next(r.buf, prevReadLen)
-		r.res.value = nil
 	}
 	return nil
 }
@@ -296,23 +246,20 @@ func (r *ArrayReader) Scan(dst ...interface{}) error {
 // that the next Scan/SwitchOnNext call will happen after the last use of this value. If you want to not
 // only switch on the value or do a one-off comparison, please use Scan() instead.
 func (r *ArrayReader) SwitchOnNext() string {
-	_, err := r.prepare()
+	err := r.next()
 	if err != nil {
 		return ""
 	}
-	return *(*string)(unsafe.Pointer(&r.res.value))
+	return r.r.String()
 }
 
 // Expect does an Any byte comparison with the values passed in against the next value in the array
 func (r *ArrayReader) Expect(vars ...string) error {
-	r.prepare()
+	r.next()
 	for _, v := range vars {
-		// For ease of use, Expect takes string as input - this is a zero-alloc cast to []byte for comparison
-		// this is safe because strings are immutable
-		comp := *(*[]byte)(unsafe.Pointer(&v))
-		if bytes.Equal(comp, r.res.value) {
+		if r.r.String() == v {
 			return nil
 		}
 	}
-	return fmt.Errorf("%s was not equal to any of %s", r.res.value, vars)
+	return fmt.Errorf("%s was not equal to any of %s", r.r.String(), vars)
 }

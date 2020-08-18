@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"net"
@@ -19,52 +18,31 @@ const (
 	subPattern
 )
 
+// I can't really have more than one message per connection "active" at a time
+// because the reader, the result etc are all tied to the connection (and we should really not
+// be advancing the reader in another thread) - so the idea here with the pool and stuff
+// is pretty stupid. I should add the message to the subscription manager and listen for it
+// on the channel at the top of every loop of Listen()
 type Message struct {
 	Ctx     context.Context
 	Pattern string
 	Result  *Result
 	Topic   string
-	array   *ArrayReader
+}
+
+func newMessage(res *Result, msgChan chan *Message) *Message {
+	msg := &Message{
+		Result: res,
+	}
+	res.finish = func() {
+		msgChan <- msg
+	}
+	return msg
 }
 
 type MessageChan <-chan *Message
 
 type MessageChanMap map[string]MessageChan
-
-type msgPool struct {
-	initBufSize int
-	msgs        sync.Pool
-}
-
-func newMsgPool(initBufSize int) *msgPool {
-	mp := &msgPool{
-		initBufSize: initBufSize,
-		msgs:        sync.Pool{},
-	}
-	mp.msgs.New = func() interface{} {
-		res := NewResult(make([]byte, 0, mp.initBufSize))
-		m := &Message{
-			Result: res,
-			array:  &ArrayReader{res: res, buf: res.value},
-		}
-		res.finish = func() {
-			m.array.reset()
-			mp.Put(m)
-		}
-		return m
-	}
-	return mp
-}
-
-func (mp *msgPool) Get(r io.Reader) *Message {
-	msg := mp.msgs.Get().(*Message)
-	msg.array.ResetReader(r)
-	return msg
-}
-
-func (mp *msgPool) Put(m *Message) {
-	mp.msgs.Put(m)
-}
 
 type subscription struct {
 	topic   string
@@ -101,7 +79,7 @@ type subscriptionManager struct {
 	chans     *sync.Map
 	conn      *conn
 	connPool  internalPool
-	msgPool   *msgPool
+	msgChan   chan *Message
 	opts      *PubSubOpts
 	writeLock *sync.Mutex
 	readChan  chan string
@@ -116,7 +94,7 @@ func newSubscriptionManager(pool internalPool, opts *PubSubOpts) *subscriptionMa
 		opts:      opts,
 		chans:     &sync.Map{},
 		connPool:  pool,
-		msgPool:   newMsgPool(opts.InitBufSize),
+		msgChan:   make(chan *Message, 1),
 		writeLock: &sync.Mutex{},
 		readChan:  make(chan string),
 		listening: false,
@@ -134,37 +112,33 @@ func (s *subscriptionManager) getConn(ctx context.Context) (*conn, error) {
 
 // tryRead - wait for a message to arrive
 // parseMessage - read message into Struct
-func (s *subscriptionManager) tryRead(ctx context.Context, buf []byte, c *conn) ([]byte, error) {
+func (s *subscriptionManager) tryRead(ctx context.Context, c *conn, array *ArrayReader) error {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	default:
 		// Ahh, low-level reading is so much fun. Here we're waiting for a new message
 		c.conn.SetReadDeadline(time.Now().Add(s.opts.PingInterval))
-		readLen, err := c.conn.Read(buf[:cap(buf)])
-		buf = buf[:readLen]
+
+		err := array.Init()
 		// TODO when 1.15 is out, change this to this: https://github.com/golang/go/issues/31449
 		if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
 			// every time we time out, we send a ping to make sure the connection is still alive
 			c.conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout))
 			err = ping(ctx, c)
 			if err != nil {
-				return buf, err
+				return err
 			}
-			return buf, fmt.Errorf("Timed out whilst waiting for data: %w", ErrRetryable)
+			return fmt.Errorf("Timed out whilst waiting for data: %w", ErrRetryable)
 		} else if err != nil {
-			return nil, err
+			return err
 		}
-		if readLen == 0 {
-			return buf, fmt.Errorf("No data was read: %w", ErrRetryable) // TODO we should probably stop reading after a while here
-		}
-		return buf, nil
+		return nil
 	}
 }
 
 func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
-	s.conn = c
-	m := s.msgPool.Get(c.conn)
+	array := NewArrayReader(c.r)
 	var count int
 	var errs []error
 	var err error
@@ -173,55 +147,54 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 		case <-ctx.Done():
 			log.Printf("%s\n", ctx.Err())
 			return
-		default:
-			m.array.buf, err = s.tryRead(ctx, m.array.buf, c)
+		case m := <-s.msgChan:
+            if m == nil {
+                return
+            }
+			err = s.tryRead(ctx, c, array)
 			if err != nil {
 				if errors.Is(err, ErrRetryable) {
 					continue // if we are retrying, just skip the loop
 				}
+				log.Println(err)
 				return // TODO Log here that the subscriber has stopped listening
 			}
-			// we fill in the rest of the array here (no we don't - this function does not read the members)
-			m.array, err = readArray(c.conn, m.array)
-			if err != nil {
-				log.Printf("%s\n", err)
-				return
-			}
-			arrTopicCount := func() int { return int(math.Ceil(float64(m.array.Len())/2) - 1) }
-			switch m.array.SwitchOnNext() {
+			arrTopicCount := func() int { return int(math.Ceil(float64(array.Len())/2) - 1) }
+			switch array.Next(ScanBulkString).SwitchOnNext() {
 			case "pmessage":
-				m.array.Scan(&m.Pattern, &m.Topic)
+				array.Scan(&m.Pattern, &m.Topic)
 			case "message":
 				// TODO This causes an allocation because m.Topic is a string, which triggers a copy
 				// proposal: make it m.Topic() instead which returns a string from the []byte of m.topic
-				m.array.Scan(&m.Topic)
+				array.Scan(&m.Topic)
 			case "psubscribe":
 				for i := 0; i < arrTopicCount(); i++ {
-					if err := m.array.Expect(<-s.readChan); err != nil {
+					if err := array.Expect(<-s.readChan); err != nil {
 						errs = append(errs, err)
 					}
-					if err := m.array.Scan(&count); err != nil {
+					if err := array.Next(ScanInteger).Scan(&count); err != nil {
 						errs = append(errs, err)
 					}
 				}
 			case "subscribe":
 				for i := 0; i < arrTopicCount(); i++ {
-					if err := m.array.Expect(<-s.readChan); err != nil {
+					if err := array.Expect(<-s.readChan); err != nil {
 						errs = append(errs, err)
 					}
-					if err := m.array.Scan(&count); err != nil {
+					if err := array.Next(ScanInteger).Scan(&count); err != nil {
 						errs = append(errs, err)
 					}
 				}
 			case "punsubscribe":
 			case "unsubscribe":
 			default:
-				log.Printf("We shouldn't be here :( value: '%s'\n", string(m.array.res.value))
+				log.Printf("We shouldn't be here :( value: '%s'\n", string(array.r.String()))
 			}
 			for i, err := range errs {
 				log.Printf("Error %d - %s", i, err)
 			}
-			if m.array.Len() > m.array.pos {
+			if array.Len() > array.pos {
+				array.next() // TODO maybe catch this error?
 				s.dispatch(ctx, m)
 			}
 		}
@@ -238,6 +211,7 @@ func (s *subscriptionManager) Subscribe(ctx context.Context, topics ...interface
 		if err != nil {
 			return nil, err
 		}
+		s.msgChan <- newMessage(NewResult(conn.r), s.msgChan)
 		go s.Listen(ctx, conn)
 		s.listening = true
 	}
@@ -298,10 +272,9 @@ func (s *subscriptionManager) Subscribe(ctx context.Context, topics ...interface
 func (s *subscriptionManager) dispatch(ctx context.Context, m *Message) {
 	m.Ctx = ctx
 	key := m.Topic
-	if m.array.Len() == 4 {
+	if m.Pattern != "" {
 		key = m.Pattern
 	}
-	m.array.prepare()
 	if sub, ok := s.chans.Load(key); ok {
 		select {
 		case <-ctx.Done():

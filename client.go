@@ -93,12 +93,11 @@ func (c *client) Get(ctx context.Context, key string) (*Result, error) {
 		conn.arrw.Reset(conn.conn)
 		return nil, err
 	}
-	_, conn.buf, err = readBulkString(conn.conn, conn.buf[:0])
+	err = conn.r.Next(ScanBulkString)
 	if err != nil {
 		c.pool.Put(ctx, conn)
 		return nil, err
 	}
-	conn.res.value = conn.buf
 	// not putting connection back here as it is put back on Result.Scan
 	return conn.res, err
 }
@@ -124,7 +123,7 @@ func (c *client) Set(ctx context.Context, key string, value driver.Value, ttl in
 		conn.arrw.Reset(conn.conn)
 		return err
 	}
-	_, conn.buf, err = readSimpleString(conn.conn, conn.buf[:0])
+	err = conn.r.Next(ScanSimpleString)
 	c.pool.Put(ctx, conn)
 	return err
 }
@@ -141,7 +140,7 @@ func (c *client) Del(ctx context.Context, key string) error {
 		c.pool.Put(ctx, conn)
 		return err
 	}
-	_, _, err = readSimpleString(conn.conn, conn.buf)
+	err = conn.r.Next(ScanSimpleString)
 	c.pool.Put(ctx, conn)
 	return err
 }
@@ -168,9 +167,9 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	} else {
 		err = conn.arrw.Flush()
 	}
-	_, i, err := readInteger(conn.conn, conn.buf)
+	err = conn.r.Next(ScanInteger)
 	c.pool.Put(ctx, conn)
-	return i, err
+	return conn.r.Int(), err
 }
 
 func (c *client) Subscribe(ctx context.Context, topics ...interface{}) (MessageChanMap, error) {

@@ -1,7 +1,6 @@
 package greddis
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 )
@@ -12,12 +11,12 @@ func ping(ctx context.Context, conn *conn) (err error) {
 	if err != nil {
 		return err
 	}
-	_, reply, err := readSimpleString(conn.conn, conn.buf)
+	err = conn.r.Next(ScanSimpleString)
 	if err != nil {
 		return err
 	}
-	if bytes.Compare(reply, []byte("PONG")) != 0 {
-		return fmt.Errorf("Got wrong reply! Expected 'PONG', received '%s'", reply)
+	if conn.r.String() != "PONG" {
+		return fmt.Errorf("Got wrong reply! Expected 'PONG', received '%s'", conn.r.String())
 	}
 	return nil
 }
