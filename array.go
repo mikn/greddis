@@ -198,6 +198,7 @@ func (a *ArrayReader) Len() int {
 func (a *ArrayReader) Init(scanFuncs ...ScanFunc) error {
 	err := a.r.Next(ScanArray)
 	a.length = a.r.Len()
+	a.pos = 0
 	a.r.tokenLen = 0
 	a.scanFuncs.Init()
 	for _, scanFunc := range scanFuncs {

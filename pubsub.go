@@ -148,9 +148,9 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 			log.Printf("%s\n", ctx.Err())
 			return
 		case m := <-s.msgChan:
-            if m == nil {
-                return
-            }
+			if m == nil {
+				return
+			}
 			err = s.tryRead(ctx, c, array)
 			if err != nil {
 				if errors.Is(err, ErrRetryable) {
@@ -188,14 +188,20 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 			case "punsubscribe":
 			case "unsubscribe":
 			default:
-				log.Printf("We shouldn't be here :( value: '%s'\n", string(array.r.String()))
+				v, _ := array.r.r.Peek(array.r.r.Buffered())
+				log.Printf("We shouldn't be here :( value: '%s' tokenLen: %d arrayLen: %d scanFuncLen: %d buffered: %d\nContents: %s", array.r.String(), array.r.Len(), array.Len(), array.scanFuncs.Len(), array.r.r.Buffered(), v)
 			}
 			for i, err := range errs {
 				log.Printf("Error %d - %s", i, err)
 			}
 			if array.Len() > array.pos {
-				array.next() // TODO maybe catch this error?
+				err := array.next() // TODO maybe catch this error?
+				if err != nil {
+					log.Printf("Next error: %s\n", err)
+				}
 				s.dispatch(ctx, m)
+			} else {
+				s.msgChan <- m
 			}
 		}
 	}
@@ -281,8 +287,6 @@ func (s *subscriptionManager) dispatch(ctx context.Context, m *Message) {
 			return
 		case sub.(*subscription).msgChan <- m:
 		}
-	} else {
-		log.Printf("no subsciption for topic: %s", key)
 	}
 }
 
