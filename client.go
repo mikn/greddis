@@ -160,12 +160,12 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	if err != nil {
 		return 0, err
 	}
-	err = conn.arrw.Init(3).Add("PUBLISH", topic, value)
-	if err != nil {
+	if err := conn.arrw.Init(3).Add("PUBLISH", topic, value); err != nil {
 		conn.arrw.Reset(conn.conn)
 		return 0, err
-	} else {
-		err = conn.arrw.Flush()
+	}
+	if err := conn.arrw.Flush(); err != nil {
+		return 0, err
 	}
 	err = conn.r.Next(ScanInteger)
 	c.pool.Put(ctx, conn)
