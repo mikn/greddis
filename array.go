@@ -2,11 +2,11 @@ package greddis
 
 import (
 	"bufio"
-	"container/list"
 	"database/sql/driver"
 	"fmt"
 	"io"
 	"strconv"
+	"sync"
 	"unsafe"
 )
 
@@ -164,11 +164,99 @@ func (w *ArrayWriter) addItem(item interface{}) error {
 	return nil
 }
 
-// For ArrayReader we should consider using struct tags to scan all fields in one go
-// The only use for Redis Arrays currently is to scan full objects (excluding the value field)
-// and expect different kinds of values. Whilst currently I read straight from a channel the
-// channel name I expect, we could...?
-// ArrayReader.Init(reader) -> calls reader.ScanArray()
+type ScanFuncList struct {
+	length   int
+	first    *ScanFuncElem
+	last     *ScanFuncElem
+	elemPool sync.Pool
+}
+
+func NewScanFuncList() *ScanFuncList {
+	return &ScanFuncList{
+		elemPool: sync.Pool{
+			New: func() interface{} {
+				return &ScanFuncElem{}
+			},
+		},
+	}
+}
+
+func (l *ScanFuncList) Back() *ScanFuncElem {
+	return l.last
+}
+
+func (l *ScanFuncList) Front() *ScanFuncElem {
+	return l.first
+}
+
+func (l *ScanFuncList) Len() int {
+	return l.length
+}
+
+func (l *ScanFuncList) PushFront(f ScanFunc) {
+	elem := l.elemPool.Get().(*ScanFuncElem)
+	elem.Value = f
+	if l.first != nil {
+		l.first.Prev = elem
+		elem.Next = l.first
+	}
+	if l.length == 0 {
+		l.last = elem
+	}
+	l.first = elem
+	l.length++
+}
+
+func (l *ScanFuncList) PushBack(f ScanFunc) {
+	elem := l.elemPool.Get().(*ScanFuncElem)
+	elem.Value = f
+	if l.last != nil {
+		l.last.Next = elem
+		elem.Prev = l.last
+	}
+	if l.length == 0 {
+		l.first = elem
+	}
+	l.last = elem
+	l.length++
+}
+
+func (l *ScanFuncList) Remove(elem *ScanFuncElem) {
+	if elem.Next != nil && elem.Prev != nil {
+		elem.Prev.Next = elem.Next
+		elem.Next.Prev = elem.Prev
+	} else if elem.Prev != nil {
+		elem.Prev.Next = nil
+	} else if elem.Next != nil {
+		elem.Next.Prev = nil
+	}
+	if elem == l.first {
+		l.first = elem.Next
+	}
+	if elem == l.last {
+		l.last = elem.Prev
+	}
+	elem.Value = nil
+	elem.Prev = nil
+	elem.Next = nil
+	l.length--
+	l.elemPool.Put(elem)
+}
+
+func (l *ScanFuncList) Init() {
+	elem := l.first
+	for elem != nil {
+		elemNext := elem.Next
+		l.Remove(elem)
+		elem = elemNext
+	}
+}
+
+type ScanFuncElem struct {
+	Prev  *ScanFuncElem
+	Next  *ScanFuncElem
+	Value ScanFunc
+}
 
 type arrayReader interface {
 	Init(r *Reader) (self *ArrayReader)
@@ -179,7 +267,7 @@ type arrayReader interface {
 func NewArrayReader(r *Reader) *ArrayReader {
 	return &ArrayReader{
 		r:         r,
-		scanFuncs: list.New(),
+		scanFuncs: NewScanFuncList(),
 	}
 }
 
@@ -187,7 +275,7 @@ type ArrayReader struct {
 	r         *Reader
 	length    int
 	pos       int
-	scanFuncs *list.List
+	scanFuncs *ScanFuncList
 }
 
 // Len returns the length of the ArrayReader
@@ -221,11 +309,12 @@ func (r *ArrayReader) next() error {
 		return ErrNoMoreRows
 	}
 	scanFunc := r.scanFuncs.Front()
+	f := scanFunc.Value
 	if r.scanFuncs.Len() > 1 {
 		r.scanFuncs.Remove(scanFunc)
 	}
 	r.pos++
-	return r.r.Next(scanFunc.Value.(ScanFunc))
+	return r.r.Next(f)
 }
 
 // Scan operates the same as `Scan` on a single result, other than that it can take multiple dst variables

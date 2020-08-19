@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 
 	gomock "github.com/golang/mock/gomock"
@@ -101,6 +102,59 @@ func TestArrayWriter(t *testing.T) {
 			err := arrw.Init(1).Add(mockValuer)
 			require.Error(t, err)
 		})
+	})
+}
+
+func TestScanFuncList(t *testing.T) {
+	t.Run("PushFront", func(t *testing.T) {
+		t.Run("one item", func(t *testing.T) {
+			l := greddis.NewScanFuncList()
+			var f greddis.ScanFunc
+			f = greddis.ScanArray
+			l.PushFront(f)
+			require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", l.Front().Value))
+			require.Equal(t, fmt.Sprintf("%v", l.Front().Value), fmt.Sprintf("%v", l.Back().Value))
+			require.Equal(t, 1, l.Len())
+		})
+		t.Run("three items", func(t *testing.T) {
+			l := greddis.NewScanFuncList()
+			fs := []greddis.ScanFunc{greddis.ScanArray, greddis.ScanBulkString, greddis.ScanInteger}
+			for i := len(fs) - 1; i >= 0; i-- {
+				l.PushFront(fs[i])
+			}
+			for _, f := range fs {
+				e := l.Front()
+				require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", e.Value))
+				l.Remove(e)
+			}
+		})
+	})
+	t.Run("PushBack", func(t *testing.T) {
+		t.Run("one item", func(t *testing.T) {
+			l := greddis.NewScanFuncList()
+			var f greddis.ScanFunc
+			f = greddis.ScanArray
+			l.PushBack(f)
+			require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", l.Front().Value))
+			require.Equal(t, fmt.Sprintf("%v", l.Front().Value), fmt.Sprintf("%v", l.Back().Value))
+			require.Equal(t, 1, l.Len())
+		})
+		t.Run("three items", func(t *testing.T) {
+			l := greddis.NewScanFuncList()
+			fs := []greddis.ScanFunc{greddis.ScanArray, greddis.ScanBulkString, greddis.ScanInteger}
+			for _, f := range fs {
+				l.PushBack(f)
+			}
+			for _, f := range fs {
+				e := l.Front()
+				require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", e.Value))
+				l.Remove(e)
+			}
+		})
+	})
+	t.Run("Init", func(t *testing.T) {
+	})
+	t.Run("Remove", func(t *testing.T) {
 	})
 }
 

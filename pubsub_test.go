@@ -60,6 +60,19 @@ func captureLog(c chan string, callback func()) {
 	c <- strings.TrimSpace(buf.String())
 }
 
+func timeout(t *testing.T, f func()) {
+	c := make(chan bool)
+	go func() {
+		f()
+		c <- true
+	}()
+	select {
+	case <-c:
+	case <-time.After(10 * time.Millisecond):
+		t.FailNow()
+	}
+}
+
 func TestNewSubscription(t *testing.T) {
 	testTopic := "testtopic"
 	t.Run("unbuffered channel", func(t *testing.T) {
@@ -85,6 +98,10 @@ func getSubMngr(ctx context.Context, ctrl *gomock.Controller) *subscriptionManag
 	c, _ := NewClient(ctx, opts)
 	subMngr := c.(*client).subMngr
 	subMngr.getConn(ctx)
+	msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
+	subMngr.msgChan = make(chan *Message, 2)
+	subMngr.msgChan <- msg
+	subMngr.msgChan <- nil
 	return subMngr
 }
 
@@ -176,12 +193,10 @@ func TestSubscriptionManager(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			mockConn.EXPECT().SetReadDeadline(gomock.Any())
 			mockConn.EXPECT().Read(gomock.Any()).Return(0, testErr)
 
-			subMngr.msgChan <- msg
 			logs := make(chan string, 1)
 			captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
@@ -192,7 +207,6 @@ func TestSubscriptionManager(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			mockErr := mock_net.NewMockError(ctrl)
 			mockErr.EXPECT().Timeout().Return(true)
@@ -209,18 +223,12 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			select {
-			case subMngr.msgChan <- msg:
-			case <-time.After(10 * time.Millisecond):
-			}
-			subMngr.msgChan <- nil
 			require.Empty(t, <-logs)
 		})
 		t.Run("error on readArray", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any())
@@ -233,14 +241,12 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(err, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
 			require.Equal(t, fmt.Sprintf("Redis error: %s", TEST_ERROR_NO_ARRAY), <-err)
 		})
 		t.Run("receive pmessage", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -255,13 +261,12 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
 			var msgRecv *Message
 			select {
 			case msgRecv = <-sub.msgChan:
 			case <-time.After(10 * time.Millisecond):
+				t.FailNow()
 			}
-			subMngr.msgChan <- nil
 			var res string
 			msgRecv.Result.Scan(&res)
 			require.Equal(t, TEST_PMESSAGE, res)
@@ -271,7 +276,6 @@ func TestSubscriptionManager(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -286,16 +290,14 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
 			var msgRecv *Message
 			select {
 			case msgRecv = <-sub.msgChan:
 			case <-time.After(10 * time.Millisecond):
+				t.FailNow()
 			}
-			subMngr.msgChan <- nil
 			var res string
 			msgRecv.Result.Scan(&res)
-			require.Equal(t, msg, msgRecv)
 			require.Equal(t, TEST_MESSAGE, res)
 			require.Empty(t, <-logs)
 		})
@@ -303,7 +305,6 @@ func TestSubscriptionManager(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -316,20 +317,14 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
-			select {
-			case subMngr.readChan <- TEST_PSUBSCRIBE_SINGLE_PATTERN:
-			case <-time.After(10 * time.Millisecond):
-			}
-			subMngr.msgChan <- nil
+			timeout(t, func() { subMngr.readChan <- TEST_PSUBSCRIBE_SINGLE_PATTERN })
 			require.Empty(t, subMngr.readChan)
-			require.Zero(t, len(logs))
+			require.Empty(t, <-logs)
 		})
 		t.Run("receive psubscribe success multiple", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -342,22 +337,16 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
 			for _, pattern := range TEST_PSUBSCRIBE_MULTIPLE_PATTERNS {
-				select {
-				case subMngr.readChan <- pattern:
-				case <-time.After(10 * time.Millisecond):
-				}
+				timeout(t, func() { subMngr.readChan <- pattern })
 			}
-			subMngr.msgChan <- nil
-			require.Empty(t, logs)
+			require.Empty(t, <-logs)
 			require.Empty(t, subMngr.readChan)
 		})
 		t.Run("receive psubscribe error on expect", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -370,20 +359,14 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
-			select {
-			case subMngr.readChan <- TEST_PSUBSCRIBE_BROKEN_EXPECT:
-			case <-time.After(10 * time.Millisecond):
-			}
-			subMngr.msgChan <- nil
+			timeout(t, func() { subMngr.readChan <- TEST_PSUBSCRIBE_BROKEN_EXPECT })
 			require.Empty(t, subMngr.readChan)
-			require.Empty(t, logs)
+			require.Equal(t, "Error 0 - test2* was not equal to any of [test3*]", <-logs)
 		})
 		t.Run("receive psubscribe error on scan", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -396,20 +379,14 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
-			select {
-			case subMngr.readChan <- TEST_PSUBSCRIBE_SINGLE_PATTERN:
-			case <-time.After(10 * time.Millisecond):
-			}
-			subMngr.msgChan <- nil
+			timeout(t, func() { subMngr.readChan <- TEST_PSUBSCRIBE_SINGLE_PATTERN })
 			require.Empty(t, subMngr.readChan)
-			require.Empty(t, logs)
+			require.Equal(t, "Error 0 - strconv.Atoi: parsing \"blah\": invalid syntax", <-logs)
 		})
 		t.Run("receive subscribe success single", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -422,20 +399,17 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
 			select {
 			case subMngr.readChan <- TEST_SUBSCRIBE_SINGLE_TOPIC:
 			case <-time.After(10 * time.Millisecond):
 			}
-			subMngr.msgChan <- nil
 			require.Empty(t, subMngr.readChan)
-			require.Zero(t, len(logs))
+			require.Empty(t, <-logs)
 		})
 		t.Run("receive subscribe success multiple", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -448,22 +422,16 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
 			for _, topic := range TEST_SUBSCRIBE_MULTIPLE_TOPICS {
-				select {
-				case subMngr.readChan <- topic:
-				case <-time.After(10 * time.Millisecond):
-				}
+				timeout(t, func() { subMngr.readChan <- topic })
 			}
-			subMngr.msgChan <- nil
 			require.Empty(t, subMngr.readChan)
-			require.Empty(t, logs)
+			require.Empty(t, <-logs)
 		})
 		t.Run("receive subscribe error on expect", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -476,21 +444,14 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
-			select {
-			case subMngr.readChan <- TEST_SUBSCRIBE_BROKEN_EXPECT:
-			case <-time.After(10 * time.Millisecond):
-			}
-			subMngr.msgChan <- nil
-			require.Empty(t, subMngr.readChan)
+			timeout(t, func() { subMngr.readChan <- TEST_SUBSCRIBE_BROKEN_EXPECT })
 			require.Equal(t, "Error 0 - test2 was not equal to any of [test3]", <-logs)
-			//require.Empty(t, <-logs)
+			require.Empty(t, subMngr.readChan)
 		})
 		t.Run("receive subscribe error on scan", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -503,12 +464,7 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
-			select {
-			case subMngr.readChan <- TEST_SUBSCRIBE_SINGLE_TOPIC:
-			case <-time.After(10 * time.Millisecond):
-			}
-			subMngr.msgChan <- nil
+			timeout(t, func() { subMngr.readChan <- TEST_SUBSCRIBE_SINGLE_TOPIC })
 			require.Empty(t, subMngr.readChan)
 			require.Empty(t, logs)
 		})
@@ -516,7 +472,6 @@ func TestSubscriptionManager(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
-			msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			defer ctrl.Finish()
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
@@ -529,9 +484,6 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			subMngr.msgChan <- msg
-			time.Sleep(5 * time.Millisecond)
-			subMngr.msgChan <- nil
 			require.Empty(t, subMngr.readChan)
 			require.NotEmpty(t, <-logs)
 		})
@@ -549,6 +501,7 @@ func TestSubscriptionManager(t *testing.T) {
 			}
 			c, _ := NewClient(ctx, opts)
 			subMngr := c.(*client).subMngr
+			subMngr.msgChan = make(chan *Message, 1)
 
 			ret, err := subMngr.Subscribe(ctx, "testtopic")
 
@@ -569,8 +522,8 @@ func TestSubscriptionManager(t *testing.T) {
 				return len(TEST_SUBSCRIBE_SINGLE_RAW), nil
 			}).AnyTimes()
 
+			subMngr.msgChan = make(chan *Message, 1)
 			subMngr.Subscribe(ctx, "testtopic")
-			subMngr.msgChan <- nil
 
 			require.True(t, subMngr.listening)
 		})

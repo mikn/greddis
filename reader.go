@@ -22,6 +22,7 @@ type reader interface {
 
 type Reader struct {
 	r        *bufio.Reader
+	limitR   *io.LimitedReader
 	err      error
 	tokenLen int
 	intToken int
@@ -29,7 +30,8 @@ type Reader struct {
 
 func NewReader(r *bufio.Reader) *Reader {
 	return &Reader{
-		r: r,
+		r:      r,
+		limitR: &io.LimitedReader{R: r},
 	}
 }
 
@@ -46,7 +48,9 @@ func (r *Reader) Next(scan ScanFunc) (err error) {
 }
 
 func (r *Reader) WriteTo(w io.Writer) (int64, error) {
-	i, err := io.CopyN(w, r.r, int64(r.tokenLen))
+	// CopyN internally uses a LimitedReader, but creates a new one every time, this avoids an alloc
+	r.limitR.N = int64(r.tokenLen)
+	i, err := io.Copy(w, r.limitR)
 	r.r.Discard(r.tokenLen - int(i) + len(sep))
 	r.tokenLen = 0
 	return i, err

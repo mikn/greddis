@@ -195,7 +195,7 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 				log.Printf("Error %d - %s", i, err)
 			}
 			if array.Len() > array.pos {
-				err := array.next() // TODO maybe catch this error?
+				err := array.next()
 				if err != nil {
 					log.Printf("Next error: %s\n", err)
 				}

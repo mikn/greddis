@@ -464,7 +464,6 @@ func redigoSet(addr string, key string, value string) func(*testing.B) {
 
 func greddisPubSub(addr string, key string, value string) func(*testing.B) {
 	return func(b *testing.B) {
-		b.ReportAllocs()
 		var ctx = context.Background()
 		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
 		subs, err := client.Subscribe(ctx, key)
@@ -474,6 +473,7 @@ func greddisPubSub(addr string, key string, value string) func(*testing.B) {
 		}
 		var buf = &bytes.Buffer{}
 		var msg *greddis.Message
+		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			client.Publish(ctx, key, value)
 			msg = <-subs[key]
@@ -509,7 +509,7 @@ func BenchmarkDrivers(b *testing.B) {
 		//testFunc{name: "GreddisGet", f: greddisGet},
 		//testFunc{name: "GreddisSet", f: greddisSet},
 	}
-	var sizes = []int{1000, 10000, 100000, 10000000}
+	var sizes = []int{1000} //, 10000, 100000, 10000000}
 	for _, f := range funcs {
 		for _, s := range sizes {
 			b.Run(
