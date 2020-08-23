@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"sync"
 	"unsafe"
 )
 
@@ -164,100 +163,6 @@ func (w *ArrayWriter) addItem(item interface{}) error {
 	return nil
 }
 
-type ScanFuncList struct {
-	length   int
-	first    *ScanFuncElem
-	last     *ScanFuncElem
-	elemPool sync.Pool
-}
-
-func NewScanFuncList() *ScanFuncList {
-	return &ScanFuncList{
-		elemPool: sync.Pool{
-			New: func() interface{} {
-				return &ScanFuncElem{}
-			},
-		},
-	}
-}
-
-func (l *ScanFuncList) Back() *ScanFuncElem {
-	return l.last
-}
-
-func (l *ScanFuncList) Front() *ScanFuncElem {
-	return l.first
-}
-
-func (l *ScanFuncList) Len() int {
-	return l.length
-}
-
-func (l *ScanFuncList) PushFront(f ScanFunc) {
-	elem := l.elemPool.Get().(*ScanFuncElem)
-	elem.Value = f
-	if l.first != nil {
-		l.first.Prev = elem
-		elem.Next = l.first
-	}
-	if l.length == 0 {
-		l.last = elem
-	}
-	l.first = elem
-	l.length++
-}
-
-func (l *ScanFuncList) PushBack(f ScanFunc) {
-	elem := l.elemPool.Get().(*ScanFuncElem)
-	elem.Value = f
-	if l.last != nil {
-		l.last.Next = elem
-		elem.Prev = l.last
-	}
-	if l.length == 0 {
-		l.first = elem
-	}
-	l.last = elem
-	l.length++
-}
-
-func (l *ScanFuncList) Remove(elem *ScanFuncElem) {
-	if elem.Next != nil && elem.Prev != nil {
-		elem.Prev.Next = elem.Next
-		elem.Next.Prev = elem.Prev
-	} else if elem.Prev != nil {
-		elem.Prev.Next = nil
-	} else if elem.Next != nil {
-		elem.Next.Prev = nil
-	}
-	if elem == l.first {
-		l.first = elem.Next
-	}
-	if elem == l.last {
-		l.last = elem.Prev
-	}
-	elem.Value = nil
-	elem.Prev = nil
-	elem.Next = nil
-	l.length--
-	l.elemPool.Put(elem)
-}
-
-func (l *ScanFuncList) Init() {
-	elem := l.first
-	for elem != nil {
-		elemNext := elem.Next
-		l.Remove(elem)
-		elem = elemNext
-	}
-}
-
-type ScanFuncElem struct {
-	Prev  *ScanFuncElem
-	Next  *ScanFuncElem
-	Value ScanFunc
-}
-
 type arrayReader interface {
 	Init(r *Reader) (self *ArrayReader)
 	Len() (length int)
@@ -266,16 +171,16 @@ type arrayReader interface {
 
 func NewArrayReader(r *Reader) *ArrayReader {
 	return &ArrayReader{
-		r:         r,
-		scanFuncs: NewScanFuncList(),
+		r: r,
 	}
 }
 
 type ArrayReader struct {
-	r         *Reader
-	length    int
-	pos       int
-	scanFuncs *ScanFuncList
+	r        *Reader
+	length   int
+	pos      int
+	scanFunc ScanFunc
+	err      error
 }
 
 // Len returns the length of the ArrayReader
@@ -283,50 +188,46 @@ func (a *ArrayReader) Len() int {
 	return a.length
 }
 
-func (a *ArrayReader) Init(scanFuncs ...ScanFunc) error {
+func (a *ArrayReader) Err() error {
+	return a.err
+}
+
+func (a *ArrayReader) Init(defaultScanFunc ScanFunc) error {
 	err := a.r.Next(ScanArray)
 	a.length = a.r.Len()
 	a.pos = 0
 	a.r.tokenLen = 0
-	a.scanFuncs.Init()
-	for _, scanFunc := range scanFuncs {
-		a.scanFuncs.PushBack(scanFunc)
-	}
+	a.scanFunc = defaultScanFunc
 	return err
 }
 
-func (r *ArrayReader) Next(scanFuncs ...ScanFunc) *ArrayReader {
-	for i := len(scanFuncs) - 1; i >= 0; i-- {
-		r.scanFuncs.PushFront(scanFuncs[i])
-	}
+func (r *ArrayReader) NextIs(scanFunc ScanFunc) *ArrayReader {
+	prev := r.scanFunc
+	r.scanFunc = scanFunc
+	r.Next()
+	r.scanFunc = prev
 	return r
 }
 
 // Next prepares the next row to be used by `Scan()`, it returns either a "no more rows" error or
 // a connection/read error will be wrapped.
-func (r *ArrayReader) next() error {
+func (r *ArrayReader) Next() *ArrayReader {
 	if r.pos >= r.length {
-		return ErrNoMoreRows
-	}
-	scanFunc := r.scanFuncs.Front()
-	f := scanFunc.Value
-	if r.scanFuncs.Len() > 1 {
-		r.scanFuncs.Remove(scanFunc)
+		r.err = ErrNoMoreRows
+		return r
 	}
 	r.pos++
-	return r.r.Next(f)
+	r.err = r.r.Next(r.scanFunc)
+	return r
 }
 
-// Scan operates the same as `Scan` on a single result, other than that it can take multiple dst variables
-func (r *ArrayReader) Scan(dst ...interface{}) error {
-	for _, d := range dst {
-		err := r.next()
-		if err != nil {
-			return err
-		}
-		if err := scan(r.r, d); err != nil {
-			return err
-		}
+// Scan operates the same as `Scan` on a single result
+func (r *ArrayReader) Scan(dst interface{}) error {
+	if r.err != nil {
+		return r.err
+	}
+	if err := scan(r.r, dst); err != nil {
+		return err
 	}
 	return nil
 }
@@ -336,8 +237,7 @@ func (r *ArrayReader) Scan(dst ...interface{}) error {
 // that the next Scan/SwitchOnNext call will happen after the last use of this value. If you want to not
 // only switch on the value or do a one-off comparison, please use Scan() instead.
 func (r *ArrayReader) SwitchOnNext() string {
-	err := r.next()
-	if err != nil {
+	if r.err != nil {
 		return ""
 	}
 	return r.r.String()
@@ -345,10 +245,12 @@ func (r *ArrayReader) SwitchOnNext() string {
 
 // Expect does an Any byte comparison with the values passed in against the next value in the array
 func (r *ArrayReader) Expect(vars ...string) error {
-	r.next()
-	for _, v := range vars {
+	for i, v := range vars {
 		if r.r.String() == v {
 			return nil
+		}
+		if i < len(vars)-1 {
+			r.Next()
 		}
 	}
 	return fmt.Errorf("%s was not equal to any of %s", r.r.String(), vars)

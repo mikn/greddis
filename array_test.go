@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"testing"
 
 	gomock "github.com/golang/mock/gomock"
@@ -105,59 +104,6 @@ func TestArrayWriter(t *testing.T) {
 	})
 }
 
-func TestScanFuncList(t *testing.T) {
-	t.Run("PushFront", func(t *testing.T) {
-		t.Run("one item", func(t *testing.T) {
-			l := greddis.NewScanFuncList()
-			var f greddis.ScanFunc
-			f = greddis.ScanArray
-			l.PushFront(f)
-			require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", l.Front().Value))
-			require.Equal(t, fmt.Sprintf("%v", l.Front().Value), fmt.Sprintf("%v", l.Back().Value))
-			require.Equal(t, 1, l.Len())
-		})
-		t.Run("three items", func(t *testing.T) {
-			l := greddis.NewScanFuncList()
-			fs := []greddis.ScanFunc{greddis.ScanArray, greddis.ScanBulkString, greddis.ScanInteger}
-			for i := len(fs) - 1; i >= 0; i-- {
-				l.PushFront(fs[i])
-			}
-			for _, f := range fs {
-				e := l.Front()
-				require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", e.Value))
-				l.Remove(e)
-			}
-		})
-	})
-	t.Run("PushBack", func(t *testing.T) {
-		t.Run("one item", func(t *testing.T) {
-			l := greddis.NewScanFuncList()
-			var f greddis.ScanFunc
-			f = greddis.ScanArray
-			l.PushBack(f)
-			require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", l.Front().Value))
-			require.Equal(t, fmt.Sprintf("%v", l.Front().Value), fmt.Sprintf("%v", l.Back().Value))
-			require.Equal(t, 1, l.Len())
-		})
-		t.Run("three items", func(t *testing.T) {
-			l := greddis.NewScanFuncList()
-			fs := []greddis.ScanFunc{greddis.ScanArray, greddis.ScanBulkString, greddis.ScanInteger}
-			for _, f := range fs {
-				l.PushBack(f)
-			}
-			for _, f := range fs {
-				e := l.Front()
-				require.Equal(t, fmt.Sprintf("%v", f), fmt.Sprintf("%v", e.Value))
-				l.Remove(e)
-			}
-		})
-	})
-	t.Run("Init", func(t *testing.T) {
-	})
-	t.Run("Remove", func(t *testing.T) {
-	})
-}
-
 func TestArrayReader(t *testing.T) {
 	t.Run("Len", func(t *testing.T) {
 		t.Run("not initialized", func(t *testing.T) {
@@ -180,11 +126,11 @@ func TestArrayReader(t *testing.T) {
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanBulkString)
 			var get string
-			err := ar.Scan(&get)
+			err := ar.Next().Scan(&get)
 			require.NoError(t, err)
 			require.Equal(t, "GET", get)
 			var str string
-			err = ar.Next(greddis.ScanSimpleString).Scan(&str)
+			err = ar.NextIs(greddis.ScanSimpleString).Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "testkey", str)
 		})
@@ -192,14 +138,13 @@ func TestArrayReader(t *testing.T) {
 			TEST_ARRAY := "*2\r\n$3\r\nGET\r\n+testkey\r\n"
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
-			ar.Init()
-			ar.Next(greddis.ScanBulkString, greddis.ScanSimpleString)
+			ar.Init(greddis.ScanBulkString)
 			var get string
-			err := ar.Scan(&get)
+			err := ar.Next().Scan(&get)
 			require.NoError(t, err)
 			require.Equal(t, "GET", get)
 			var str string
-			err = ar.Scan(&str)
+			err = ar.NextIs(greddis.ScanSimpleString).Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "testkey", str)
 		})
@@ -207,29 +152,27 @@ func TestArrayReader(t *testing.T) {
 			TEST_ARRAY := "*2\r\n$3\r\nGET\r\n+testkey\r\n"
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
-			ar.Init()
+			ar.Init(greddis.ScanBulkString)
 			var get string
-			err := ar.Next(greddis.ScanBulkString).Scan(&get)
+			err := ar.Next().Scan(&get)
 			require.NoError(t, err)
 			require.Equal(t, "GET", get)
 			var str string
-			err = ar.Next(greddis.ScanSimpleString).Scan(&str)
+			err = ar.NextIs(greddis.ScanSimpleString).Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "testkey", str)
 		})
 	})
 	t.Run("Scan", func(t *testing.T) {
-		t.Run("bulkstrings", func(t *testing.T) {
-			TEST_ARRAY := "*2\r\n$3\r\nGET\r\n$7\r\ntestkey\r\n"
+		t.Run("bulkstring", func(t *testing.T) {
+			TEST_ARRAY := "*2\r\n$3\r\nGET\r\n"
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanBulkString)
 			var get string
-			var str string
-			err := ar.Scan(&get, &str)
+			err := ar.Next().Scan(&get)
 			require.NoError(t, err)
 			require.Equal(t, "GET", get)
-			require.Equal(t, "testkey", str)
 		})
 		t.Run("simplestring(int)", func(t *testing.T) {
 			TEST_ARRAY := "*1\r\n:42\r\n"
@@ -237,7 +180,7 @@ func TestArrayReader(t *testing.T) {
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanInteger)
 			var i int
-			err := ar.Scan(&i)
+			err := ar.Next().Scan(&i)
 			require.NoError(t, err)
 			require.Equal(t, 42, i)
 		})
@@ -247,13 +190,13 @@ func TestArrayReader(t *testing.T) {
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
 			var str string
-			err := ar.Scan(&str)
+			err := ar.Next().Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "teststring", str)
-			err = ar.Scan(&str)
+			err = ar.Next().Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "teststring2", str)
-			err = ar.Scan(&str)
+			err = ar.Next().Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "teststring3", str)
 		})
@@ -263,7 +206,7 @@ func TestArrayReader(t *testing.T) {
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
 			var str string
-			err := ar.Scan(&str)
+			err := ar.Next().Scan(&str)
 			require.Error(t, err)
 			require.EqualError(t, err, "Redis error: testerror")
 		})
@@ -273,21 +216,9 @@ func TestArrayReader(t *testing.T) {
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
 			var str string
-			err := ar.Scan(&str)
+			err := ar.Next().Scan(&str)
 			require.Error(t, err)
 			require.Equal(t, "", str)
-		})
-		t.Run("passing more variables to Scan than is in array", func(t *testing.T) {
-			TEST_ARRAY := "*1\r\n+testerror\r\n"
-			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
-			ar := greddis.NewArrayReader(r)
-			ar.Init(greddis.ScanSimpleString)
-			var str string
-			var str2 string
-			err := ar.Scan(&str, &str2)
-			require.Error(t, err)
-			require.Equal(t, greddis.ErrNoMoreRows, err)
-			require.Equal(t, "testerror", str)
 		})
 		t.Run("error on result scan", func(t *testing.T) {
 			TEST_ARRAY := "*1\r\n:12fffff\r\n"
@@ -295,7 +226,7 @@ func TestArrayReader(t *testing.T) {
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanInteger)
 			var i int
-			err := ar.Scan(&i)
+			err := ar.Next().Scan(&i)
 			require.Error(t, err)
 			require.Equal(t, 0, i)
 		})
@@ -306,7 +237,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			res := ar.SwitchOnNext()
+			res := ar.Next().SwitchOnNext()
 			require.Equal(t, "", res)
 		})
 		t.Run("success (1 var)", func(t *testing.T) {
@@ -314,7 +245,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			str := ar.SwitchOnNext()
+			str := ar.Next().SwitchOnNext()
 			require.Equal(t, "teststring", str)
 		})
 		t.Run("success (2 vars)", func(t *testing.T) {
@@ -322,9 +253,9 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			str := ar.SwitchOnNext()
+			str := ar.Next().SwitchOnNext()
 			require.Equal(t, "teststring", str)
-			str = ar.SwitchOnNext()
+			str = ar.Next().SwitchOnNext()
 			require.Equal(t, "teststring2", str)
 		})
 	})
@@ -334,10 +265,10 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("teststring")
+			err := ar.Next().Expect("teststring")
 			require.NoError(t, err)
 			var str string
-			err = ar.Scan(&str)
+			err = ar.Next().Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "teststring2", str)
 		})
@@ -346,7 +277,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("teststring")
+			err := ar.Next().Expect("teststring")
 			require.NoError(t, err)
 		})
 		t.Run("match found (3 vars)", func(t *testing.T) {
@@ -354,7 +285,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("blah", "teststring", "beheh")
+			err := ar.Next().Expect("blah", "teststring", "beheh")
 			require.NoError(t, err)
 		})
 		t.Run("match found 2 times", func(t *testing.T) {
@@ -362,9 +293,9 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("teststring")
+			err := ar.Next().Expect("teststring")
 			require.NoError(t, err)
-			err = ar.Expect("teststring2")
+			err = ar.Next().Expect("teststring2")
 			require.NoError(t, err)
 		})
 		t.Run("match not found (1 var)", func(t *testing.T) {
@@ -372,7 +303,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("teststring")
+			err := ar.Next().Expect("teststring")
 			require.Error(t, err)
 		})
 		t.Run("match not found (1 var) and read next", func(t *testing.T) {
@@ -380,10 +311,10 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("teststring")
+			err := ar.Next().Expect("teststring")
 			require.Error(t, err)
 			var str string
-			err = ar.Scan(&str)
+			err = ar.Next().Scan(&str)
 			require.NoError(t, err)
 			require.Equal(t, "teststring", str)
 		})
@@ -392,7 +323,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect("blah", "teststring", "beheh")
+			err := ar.Next().Expect("blah", "teststring", "beheh")
 			require.Error(t, err)
 		})
 		t.Run("match not found (0 vars)", func(t *testing.T) {
@@ -400,7 +331,7 @@ func TestArrayReader(t *testing.T) {
 			r := greddis.NewReader(bufio.NewReader(bytes.NewBufferString(TEST_ARRAY)))
 			ar := greddis.NewArrayReader(r)
 			ar.Init(greddis.ScanSimpleString)
-			err := ar.Expect()
+			err := ar.Next().Expect()
 			require.Error(t, err)
 		})
 	})

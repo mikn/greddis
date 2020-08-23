@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"runtime/debug"
 	"strconv"
 	"syscall"
 	"testing"
@@ -21,7 +20,6 @@ import (
 )
 
 func BenchmarkNetSingleBufIO(b *testing.B) {
-	debug.SetGCPercent(-1)
 	b.ReportAllocs()
 	var c, err = net.Dial("tcp", "localhost:6379")
 	var conn = c.(*net.TCPConn)
@@ -41,8 +39,6 @@ func BenchmarkNetSingleBufIO(b *testing.B) {
 		rw.ReadBytes('\n')
 	}
 	conn.Write([]byte("del testkey\r\n"))
-	debug.FreeOSMemory()
-	debug.SetGCPercent(80)
 }
 
 func testCallBufIO(rw bufio.ReadWriter) string {
@@ -78,6 +74,7 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 		ret = ret[:]
 	}
 	syscall.Write(fd, []byte("del testkey\r\n"))
+	syscall.Close(fd)
 }
 
 func BenchmarkNetSingleFunc(b *testing.B) {
@@ -475,7 +472,7 @@ func greddisPubSub(addr string, key string, value string) func(*testing.B) {
 		var msg *greddis.Message
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			client.Publish(ctx, key, value)
+			client.Publish(ctx, key, &value)
 			msg = <-subs[key]
 			msg.Result.Scan(buf)
 			buf.Reset()
@@ -502,14 +499,14 @@ func RandStringBytes(n int) string {
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
 		testFunc{name: "GreddisPubSub", f: greddisPubSub},
-		//testFunc{name: "GoRedisGet", f: goredisGet},
-		//testFunc{name: "GoRedisSet", f: goredisSet},
-		//testFunc{name: "RedigoGet", f: redigoGet},
-		//testFunc{name: "RedigoSet", f: redigoSet},
-		//testFunc{name: "GreddisGet", f: greddisGet},
-		//testFunc{name: "GreddisSet", f: greddisSet},
+		testFunc{name: "GoRedisGet", f: goredisGet},
+		testFunc{name: "GoRedisSet", f: goredisSet},
+		testFunc{name: "RedigoGet", f: redigoGet},
+		testFunc{name: "RedigoSet", f: redigoSet},
+		testFunc{name: "GreddisGet", f: greddisGet},
+		testFunc{name: "GreddisSet", f: greddisSet},
 	}
-	var sizes = []int{1000} //, 10000, 100000, 10000000}
+	var sizes = []int{1000, 10000, 100000, 10000000}
 	for _, f := range funcs {
 		for _, s := range sizes {
 			b.Run(

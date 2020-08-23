@@ -50,9 +50,9 @@ func scan(r *Reader, dst interface{}) (err error) {
 			*d = int(val)
 		}
 	case *[]byte:
-		t := make([]byte, len(r.Bytes()))
-		copy(t, r.Bytes())
-		*d = t
+		b := *d
+		*d = b[:r.Len()]
+		copy(*d, r.Bytes())
 	case io.Writer:
 		_, err = r.WriteTo(d)
 	case Scanner:

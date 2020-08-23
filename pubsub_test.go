@@ -19,25 +19,25 @@ import (
 )
 
 var (
-	TEST_MESSAGE_RAW   = []byte("*3\r\n$7\r\nmessage\r\n$9\r\ntesttopic\r\n$7\r\ntesting\r\n")
-	TEST_MESSAGE_TOPIC = "testtopic"
-	TEST_MESSAGE       = "testing"
+	TEST_MESSAGE_RAW_BROKEN_TOPIC = []byte("*3\r\n$7\r\nmessage\r\n:9\r\ntesttopic\r\n$7\r\ntesting\r\n")
+	TEST_MESSAGE_RAW              = []byte("*3\r\n$7\r\nmessage\r\n$9\r\ntesttopic\r\n$7\r\ntesting\r\n")
+	TEST_MESSAGE_TOPIC            = "testtopic"
+	TEST_MESSAGE                  = "testing"
 
-	TEST_PMESSAGE_RAW     = []byte("*4\r\n$8\r\npmessage\r\n$5\r\ntest*\r\n$6\r\ntopicp\r\n$5\r\ntest2\r\n")
-	TEST_PMESSAGE_PATTERN = "test*"
-	TEST_PMESSAGE_TOPIC   = "topicp"
-	TEST_PMESSAGE         = "test2"
+	TEST_PMESSAGE_RAW_BROKEN_PATTERN = []byte("*4\r\n$8\r\npmessage\r\n:5\r\ntest*\r\n$6\r\ntopicp\r\n$5\r\ntest2\r\n")
+	TEST_PMESSAGE_RAW                = []byte("*4\r\n$8\r\npmessage\r\n$5\r\ntest*\r\n$6\r\ntopicp\r\n$5\r\ntest2\r\n")
+	TEST_PMESSAGE_PATTERN            = "test*"
+	TEST_PMESSAGE_TOPIC              = "topicp"
+	TEST_PMESSAGE                    = "test2"
 
 	TEST_ERROR_NO_ARRAY_RAW = []byte("-this is an error message instead of an array\r\n")
 	TEST_ERROR_NO_ARRAY     = "this is an error message instead of an array"
 
-	TEST_PSUBSCRIBE_BROKEN_EXPECT  = "test3*"
-	TEST_PSUBSCRIBE_BROKEN_COUNT   = []byte("*3\r\n$10\r\npsubscribe\r\n$6\r\ntest2*\r\n:blah\r\n")
 	TEST_PSUBSCRIBE_SINGLE_RAW     = []byte("*3\r\n$10\r\npsubscribe\r\n$6\r\ntest2*\r\n:1\r\n")
 	TEST_PSUBSCRIBE_SINGLE_PATTERN = "test2*"
 
-	TEST_PSUBSCRIBE_MULTIPLE_RAW      = []byte("*7\r\n$10\r\npsubscribe\r\n$6\r\ntest3*\r\n:2\r\n$6\r\ntest4*\r\n:3\r\n$6\r\ntest5*\r\n:4\r\n")
-	TEST_PSUBSCRIBE_MULTIPLE_PATTERNS = []string{"test3*", "test4*", "test5*"}
+	TEST_PUNSUBSCRIBE_SINGLE_RAW     = []byte("*3\r\n$12\r\npunsubscribe\r\n$6\r\ntest2*\r\n:1\r\n")
+	TEST_PUNSUBSCRIBE_SINGLE_PATTERN = "test2*"
 
 	TEST_SUBSCRIBE_BROKEN_EXPECT = "test3"
 	TEST_SUBSCRIBE_BROKEN_COUNT  = []byte("*3\r\n$9\r\nsubscribe\r\n$5\r\ntest2\r\n:blah\r\n")
@@ -48,6 +48,9 @@ var (
 	TEST_SUBSCRIBE_MULTIPLE_TOPICS = []string{"test7", "test8", "test9"}
 
 	TEST_LISTEN_INVALID_VALUE = []byte("*3\r\n$9\r\ninvalid_value\r\n$5\r\ntest2\r\n:1\r\n")
+
+	TEST_UNSUBSCRIBE_SINGLE_RAW   = []byte("*3\r\n$11\r\nunsubscribe\r\n$5\r\ntest2\r\n:0\r\n")
+	TEST_UNSUBSCRIBE_SINGLE_TOPIC = "test2"
 )
 
 func captureLog(c chan string, callback func()) {
@@ -98,64 +101,23 @@ func getSubMngr(ctx context.Context, ctrl *gomock.Controller) *subscriptionManag
 	c, _ := NewClient(ctx, opts)
 	subMngr := c.(*client).subMngr
 	subMngr.getConn(ctx)
-	msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 	subMngr.msgChan = make(chan *Message, 2)
+	msg := newMessage(NewResult(subMngr.conn.r), subMngr.msgChan)
 	subMngr.msgChan <- msg
 	subMngr.msgChan <- nil
 	return subMngr
 }
 
 func TestSubscriptionManager(t *testing.T) {
-	t.Run("tryRead", func(t *testing.T) {
-		ctx := context.Background()
-		t.Run("array read error", func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-			subMngr := getSubMngr(ctx, ctrl)
-			array := NewArrayReader(subMngr.conn.r)
-			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			mockConn.EXPECT().SetReadDeadline(gomock.Any())
-			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
-				copy(b, TEST_ERROR_NO_ARRAY_RAW)
-				return len(TEST_ERROR_NO_ARRAY_RAW), nil
-			})
-
-			err := subMngr.tryRead(ctx, subMngr.conn, array)
-
-			require.Error(t, err)
-			require.EqualError(t, err, fmt.Sprintf("Redis error: %s", TEST_ERROR_NO_ARRAY))
-		})
-
-		t.Run("timeout", func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-			subMngr := getSubMngr(ctx, ctrl)
-			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			mockErr := mock_net.NewMockError(ctrl)
-			array := NewArrayReader(subMngr.conn.r)
-			mockErr.EXPECT().Timeout().Return(true)
-			mockConn.EXPECT().SetReadDeadline(gomock.Any())
-			mockConn.EXPECT().Read(gomock.Any()).Return(0, mockErr)
-			mockConn.EXPECT().SetReadDeadline(gomock.Any())
-			mockConn.EXPECT().Write(gomock.Any()).Return(14, nil)
-			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
-				copy(b, []byte("+PONG\r\n"))
-				return 7, nil
-			})
-
-			err := subMngr.tryRead(ctx, subMngr.conn, array)
-
-			require.Error(t, err)
-			require.True(t, errors.Is(err, ErrRetryable))
-		})
-
+	t.Run("Listen", func(t *testing.T) {
+		testErr := errors.New("TESTERROR")
 		t.Run("ping error", func(t *testing.T) {
+			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			subMngr := getSubMngr(ctx, ctrl)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
 			mockErr := mock_net.NewMockError(ctrl)
-			array := NewArrayReader(subMngr.conn.r)
 			testErr := errors.New("TESTERROR")
 			mockErr.EXPECT().Timeout().Return(true)
 			mockConn.EXPECT().SetReadDeadline(gomock.Any())
@@ -163,32 +125,29 @@ func TestSubscriptionManager(t *testing.T) {
 			mockConn.EXPECT().SetReadDeadline(gomock.Any())
 			mockConn.EXPECT().Write(gomock.Any()).Return(0, testErr)
 
-			err := subMngr.tryRead(ctx, subMngr.conn, array)
+			logs := make(chan string, 1)
+			go captureLog(logs, func() {
+				subMngr.Listen(ctx, subMngr.conn)
+			})
 
-			require.EqualError(t, err, testErr.Error())
+			require.Equal(t, "Ping error: TESTERROR", <-logs)
 		})
-
-		t.Run("successful read", func(t *testing.T) {
+		t.Run("cancel context", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			subMngr := getSubMngr(ctx, ctrl)
-			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			array := NewArrayReader(subMngr.conn.r)
-			mockConn.EXPECT().SetReadDeadline(gomock.Any())
-			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
-				copy(b, TEST_MESSAGE_RAW)
-				return len(TEST_MESSAGE_RAW), nil
+			subMngr.msgChan = make(chan *Message)
+
+			logs := make(chan string, 1)
+			go captureLog(logs, func() {
+				subMngr.Listen(ctx, subMngr.conn)
 			})
+			cancel()
 
-			err := subMngr.tryRead(ctx, subMngr.conn, array)
-
-			require.NoError(t, err)
-			require.Equal(t, 3, array.Len())
+			require.Equal(t, "context canceled", <-logs)
 		})
-	})
-	t.Run("Listen", func(t *testing.T) {
-		testErr := errors.New("TESTERROR")
-		t.Run("error on tryRead", func(t *testing.T) {
+		t.Run("error on read array.Init", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -198,11 +157,13 @@ func TestSubscriptionManager(t *testing.T) {
 			mockConn.EXPECT().Read(gomock.Any()).Return(0, testErr)
 
 			logs := make(chan string, 1)
-			captureLog(logs, func() {
+			go captureLog(logs, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
+
+			require.Equal(t, "Array Init error: TESTERROR", <-logs)
 		})
-		t.Run("retry error on tryRead", func(t *testing.T) {
+		t.Run("retry error on array.Init", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -225,7 +186,7 @@ func TestSubscriptionManager(t *testing.T) {
 			})
 			require.Empty(t, <-logs)
 		})
-		t.Run("error on readArray", func(t *testing.T) {
+		t.Run("read error on array.Init", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			subMngr := getSubMngr(ctx, ctrl)
@@ -241,7 +202,25 @@ func TestSubscriptionManager(t *testing.T) {
 			go captureLog(err, func() {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
-			require.Equal(t, fmt.Sprintf("Redis error: %s", TEST_ERROR_NO_ARRAY), <-err)
+			require.Equal(t, fmt.Sprintf("Array Init error: Redis error: %s", TEST_ERROR_NO_ARRAY), <-err)
+		})
+		t.Run("receive pmessage broken pattern", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			defer ctrl.Finish()
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_PMESSAGE_RAW_BROKEN_PATTERN)
+				return len(TEST_PMESSAGE_RAW_BROKEN_PATTERN), nil
+			}).AnyTimes()
+
+			logs := make(chan string)
+			go captureLog(logs, func() {
+				subMngr.Listen(ctx, subMngr.conn)
+			})
+			require.Equal(t, "Error: Expected token: $ but received :\nError: Expected token: $ but received 5", <-logs)
 		})
 		t.Run("receive pmessage", func(t *testing.T) {
 			ctx := context.Background()
@@ -272,6 +251,24 @@ func TestSubscriptionManager(t *testing.T) {
 			require.Equal(t, TEST_PMESSAGE, res)
 			require.Empty(t, <-logs)
 		})
+		t.Run("receive message broken topic", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			defer ctrl.Finish()
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_MESSAGE_RAW_BROKEN_TOPIC)
+				return len(TEST_MESSAGE_RAW_BROKEN_TOPIC), nil
+			}).AnyTimes()
+
+			logs := make(chan string)
+			go captureLog(logs, func() {
+				subMngr.Listen(ctx, subMngr.conn)
+			})
+			require.Equal(t, "Error: Expected token: $ but received :", <-logs)
+		})
 		t.Run("receive message", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
@@ -301,6 +298,46 @@ func TestSubscriptionManager(t *testing.T) {
 			require.Equal(t, TEST_MESSAGE, res)
 			require.Empty(t, <-logs)
 		})
+		t.Run("receive punsubscribe success single", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			defer ctrl.Finish()
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_PUNSUBSCRIBE_SINGLE_RAW)
+				return len(TEST_PUNSUBSCRIBE_SINGLE_RAW), nil
+			}).AnyTimes()
+
+			logs := make(chan string)
+			go captureLog(logs, func() {
+				subMngr.Listen(ctx, subMngr.conn)
+			})
+			timeout(t, func() { subMngr.readChan <- TEST_PUNSUBSCRIBE_SINGLE_PATTERN })
+			require.Empty(t, subMngr.readChan)
+			require.Empty(t, <-logs)
+		})
+		t.Run("receive unsubscribe success single", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			defer ctrl.Finish()
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_UNSUBSCRIBE_SINGLE_RAW)
+				return len(TEST_UNSUBSCRIBE_SINGLE_RAW), nil
+			}).AnyTimes()
+
+			logs := make(chan string)
+			go captureLog(logs, func() {
+				subMngr.Listen(ctx, subMngr.conn)
+			})
+			timeout(t, func() { subMngr.readChan <- TEST_UNSUBSCRIBE_SINGLE_TOPIC })
+			require.Empty(t, subMngr.readChan)
+			require.Empty(t, <-logs)
+		})
 		t.Run("receive psubscribe success single", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
@@ -320,68 +357,6 @@ func TestSubscriptionManager(t *testing.T) {
 			timeout(t, func() { subMngr.readChan <- TEST_PSUBSCRIBE_SINGLE_PATTERN })
 			require.Empty(t, subMngr.readChan)
 			require.Empty(t, <-logs)
-		})
-		t.Run("receive psubscribe success multiple", func(t *testing.T) {
-			ctx := context.Background()
-			ctrl := gomock.NewController(t)
-			subMngr := getSubMngr(ctx, ctrl)
-			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			defer ctrl.Finish()
-			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
-			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
-				copy(b, TEST_PSUBSCRIBE_MULTIPLE_RAW)
-				return len(TEST_PSUBSCRIBE_MULTIPLE_RAW), nil
-			}).AnyTimes()
-
-			logs := make(chan string)
-			go captureLog(logs, func() {
-				subMngr.Listen(ctx, subMngr.conn)
-			})
-			for _, pattern := range TEST_PSUBSCRIBE_MULTIPLE_PATTERNS {
-				timeout(t, func() { subMngr.readChan <- pattern })
-			}
-			require.Empty(t, <-logs)
-			require.Empty(t, subMngr.readChan)
-		})
-		t.Run("receive psubscribe error on expect", func(t *testing.T) {
-			ctx := context.Background()
-			ctrl := gomock.NewController(t)
-			subMngr := getSubMngr(ctx, ctrl)
-			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			defer ctrl.Finish()
-			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
-			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
-				copy(b, TEST_PSUBSCRIBE_SINGLE_RAW)
-				return len(TEST_PSUBSCRIBE_SINGLE_RAW), nil
-			}).AnyTimes()
-
-			logs := make(chan string)
-			go captureLog(logs, func() {
-				subMngr.Listen(ctx, subMngr.conn)
-			})
-			timeout(t, func() { subMngr.readChan <- TEST_PSUBSCRIBE_BROKEN_EXPECT })
-			require.Empty(t, subMngr.readChan)
-			require.Equal(t, "Error 0 - test2* was not equal to any of [test3*]", <-logs)
-		})
-		t.Run("receive psubscribe error on scan", func(t *testing.T) {
-			ctx := context.Background()
-			ctrl := gomock.NewController(t)
-			subMngr := getSubMngr(ctx, ctrl)
-			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			defer ctrl.Finish()
-			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
-			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
-				copy(b, TEST_PSUBSCRIBE_BROKEN_COUNT)
-				return len(TEST_PSUBSCRIBE_BROKEN_COUNT), nil
-			}).AnyTimes()
-
-			logs := make(chan string)
-			go captureLog(logs, func() {
-				subMngr.Listen(ctx, subMngr.conn)
-			})
-			timeout(t, func() { subMngr.readChan <- TEST_PSUBSCRIBE_SINGLE_PATTERN })
-			require.Empty(t, subMngr.readChan)
-			require.Equal(t, "Error 0 - strconv.Atoi: parsing \"blah\": invalid syntax", <-logs)
 		})
 		t.Run("receive subscribe success single", func(t *testing.T) {
 			ctx := context.Background()
@@ -445,7 +420,7 @@ func TestSubscriptionManager(t *testing.T) {
 				subMngr.Listen(ctx, subMngr.conn)
 			})
 			timeout(t, func() { subMngr.readChan <- TEST_SUBSCRIBE_BROKEN_EXPECT })
-			require.Equal(t, "Error 0 - test2 was not equal to any of [test3]", <-logs)
+			require.Equal(t, "Error: test2 was not equal to any of [test3]", <-logs)
 			require.Empty(t, subMngr.readChan)
 		})
 		t.Run("receive subscribe error on scan", func(t *testing.T) {
@@ -489,6 +464,16 @@ func TestSubscriptionManager(t *testing.T) {
 		})
 	})
 	t.Run("Subscribe", func(t *testing.T) {
+		t.Run("error len zero", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+
+			ret, err := subMngr.Subscribe(ctx)
+			require.Empty(t, ret)
+			require.Error(t, err)
+		})
 		t.Run("error on getConn", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
@@ -509,13 +494,41 @@ func TestSubscriptionManager(t *testing.T) {
 			require.Error(t, err)
 			require.Equal(t, testError, err)
 		})
-		t.Run("getConn success", func(t *testing.T) {
+		type errorFunc func(context.Context, *subscriptionManager) (MessageChanMap, error)
+		errFuncs := make(map[string]errorFunc)
+		errFuncs["string"] = func(ctx context.Context, subMngr *subscriptionManager) (MessageChanMap, error) {
+			return subMngr.Subscribe(ctx, RedisPattern("test*"), "testtopic")
+		}
+		errFuncs["RedisPattern"] = func(ctx context.Context, subMngr *subscriptionManager) (MessageChanMap, error) {
+			return subMngr.Subscribe(ctx, "testtopic", RedisPattern("test*"))
+		}
+		for name, errFunc := range errFuncs {
+			t.Run(fmt.Sprintf("error mixed type %s", name), func(t *testing.T) {
+				ctx := context.Background()
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				subMngr := getSubMngr(ctx, ctrl)
+				mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+				mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+				mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+					copy(b, TEST_SUBSCRIBE_SINGLE_RAW)
+					return len(TEST_SUBSCRIBE_SINGLE_RAW), nil
+				}).AnyTimes()
+
+				subMngr.msgChan = make(chan *Message, 1)
+				chanMap, err := errFunc(ctx, subMngr)
+
+				require.Empty(t, chanMap)
+				require.Error(t, err)
+				require.Equal(t, err, ErrMixedTopicTypes)
+			})
+		}
+		t.Run("error wrong type", func(t *testing.T) {
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 			subMngr := getSubMngr(ctx, ctrl)
 			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
-			defer ctrl.Finish()
-			mockConn.EXPECT().Write(gomock.Any())
 			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
 			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
 				copy(b, TEST_SUBSCRIBE_SINGLE_RAW)
@@ -523,25 +536,246 @@ func TestSubscriptionManager(t *testing.T) {
 			}).AnyTimes()
 
 			subMngr.msgChan = make(chan *Message, 1)
-			subMngr.Subscribe(ctx, "testtopic")
+			chanMap, err := subMngr.Subscribe(ctx, []byte("hello"))
 
-			require.True(t, subMngr.listening)
-		})
-		t.Run("error mixed type RedisPattern", func(t *testing.T) {
-		})
-		t.Run("error mixed type string", func(t *testing.T) {
-		})
-		t.Run("error wrong type", func(t *testing.T) {
+			require.Empty(t, chanMap)
+			require.Error(t, err)
+			require.EqualError(t, err, "Wrong type! Expected RedisPattern or string, but received: []uint8")
 		})
 		t.Run("error on command array flush", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			testError := errors.New("TESTERROR")
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_SUBSCRIBE_SINGLE_RAW)
+				return len(TEST_SUBSCRIBE_SINGLE_RAW), nil
+			}).AnyTimes()
+			mockConn.EXPECT().Write([]byte("*2\r\n$9\r\nSUBSCRIBE\r\n$9\r\ntesttopic\r\n")).Return(0, testError)
+
+			subMngr.msgChan = make(chan *Message, 1)
+			chanMap, err := subMngr.Subscribe(ctx, "testtopic")
+
+			require.Empty(t, chanMap)
+			require.Error(t, err)
+			require.Equal(t, err, testError)
 		})
 		t.Run("RedisPattern success one value", func(t *testing.T) {
-		})
-		t.Run("RedisPattern success multiple values", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			subMngr.listening = true
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			write := []byte("*2\r\n$10\r\nPSUBSCRIBE\r\n$6\r\ntest2*\r\n")
+			mockConn.EXPECT().Write(write).Return(len(write), nil)
+
+			subMngr.readChan = make(chan string, 1)
+			chanMap, err := subMngr.Subscribe(ctx, RedisPattern("test2*"))
+
+			require.Equal(t, "test2*", <-subMngr.readChan)
+			require.NotEmpty(t, chanMap)
+			require.NoError(t, err)
+			require.IsType(t, make(MessageChan), chanMap["test2*"])
 		})
 		t.Run("string success one value", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			subMngr.listening = true
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			write := []byte("*2\r\n$9\r\nSUBSCRIBE\r\n$4\r\ntest\r\n")
+			mockConn.EXPECT().Write(write).Return(len(write), nil)
+
+			subMngr.readChan = make(chan string, 1)
+			chanMap, err := subMngr.Subscribe(ctx, "test")
+
+			require.Equal(t, "test", <-subMngr.readChan)
+			require.NotEmpty(t, chanMap)
+			require.NoError(t, err)
+			require.IsType(t, make(MessageChan), chanMap["test2*"])
 		})
 		t.Run("string success multiple values", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			subMngr.listening = true
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			write := []byte("*3\r\n$9\r\nSUBSCRIBE\r\n$4\r\ntest\r\n$5\r\ntest2\r\n")
+			mockConn.EXPECT().Write(write).Return(len(write), nil)
+
+			subMngr.readChan = make(chan string, 2)
+			chanMap, err := subMngr.Subscribe(ctx, "test", "test2")
+
+			require.Equal(t, "test", <-subMngr.readChan)
+			require.Equal(t, "test2", <-subMngr.readChan)
+			require.NotEmpty(t, chanMap)
+			require.NoError(t, err)
+			require.IsType(t, make(MessageChan), chanMap["test2*"])
+		})
+	})
+	t.Run("dispatch", func(t *testing.T) {
+		t.Run("context canceled", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			res := NewResult(subMngr.conn.r)
+			sub := newSubscription("test", 0)
+			msg := newMessage(res, sub.msgChan)
+			msg.topic = []byte("test")
+			subMngr.chans.Store("test", sub)
+			go subMngr.dispatch(ctx, msg)
+			cancel()
+		})
+	})
+	t.Run("Unsubscribe", func(t *testing.T) {
+		t.Run("error on getConn", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			testError := errors.New("TESTERROR")
+			opts := &PoolOptions{
+				Dial: func(ctx context.Context) (net.Conn, error) {
+					return nil, testError
+				},
+			}
+			c, _ := NewClient(ctx, opts)
+			subMngr := c.(*client).subMngr
+			subMngr.msgChan = make(chan *Message, 1)
+
+			err := subMngr.Unsubscribe(ctx, "testtopic")
+
+			require.Error(t, err)
+			require.Equal(t, testError, err)
+		})
+		type errorFunc func(context.Context, *subscriptionManager) error
+		errFuncs := make(map[string]errorFunc)
+		errFuncs["string"] = func(ctx context.Context, subMngr *subscriptionManager) error {
+			return subMngr.Unsubscribe(ctx, RedisPattern("test*"), "testtopic")
+		}
+		errFuncs["RedisPattern"] = func(ctx context.Context, subMngr *subscriptionManager) error {
+			return subMngr.Unsubscribe(ctx, "testtopic", RedisPattern("test*"))
+		}
+		for name, errFunc := range errFuncs {
+			t.Run(fmt.Sprintf("error mixed type %s", name), func(t *testing.T) {
+				ctx := context.Background()
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				subMngr := getSubMngr(ctx, ctrl)
+				mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+				mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+				mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+					copy(b, TEST_UNSUBSCRIBE_SINGLE_RAW)
+					return len(TEST_UNSUBSCRIBE_SINGLE_RAW), nil
+				}).AnyTimes()
+
+				subMngr.msgChan = make(chan *Message, 1)
+				err := errFunc(ctx, subMngr)
+
+				require.Error(t, err)
+				require.Equal(t, err, ErrMixedTopicTypes)
+			})
+		}
+		t.Run("error wrong type", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_SUBSCRIBE_SINGLE_RAW)
+				return len(TEST_SUBSCRIBE_SINGLE_RAW), nil
+			}).AnyTimes()
+
+			subMngr.msgChan = make(chan *Message, 1)
+			err := subMngr.Unsubscribe(ctx, []byte("hello"))
+
+			require.Error(t, err)
+			require.EqualError(t, err, "Wrong type! Expected RedisPattern or string, but received: []uint8")
+		})
+		t.Run("error on command array flush", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			testError := errors.New("TESTERROR")
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			mockConn.EXPECT().SetReadDeadline(gomock.Any()).AnyTimes()
+			mockConn.EXPECT().Read(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+				copy(b, TEST_SUBSCRIBE_SINGLE_RAW)
+				return len(TEST_SUBSCRIBE_SINGLE_RAW), nil
+			}).AnyTimes()
+			mockConn.EXPECT().Write([]byte("*2\r\n$11\r\nUNSUBSCRIBE\r\n$9\r\ntesttopic\r\n")).Return(0, testError)
+
+			subMngr.msgChan = make(chan *Message, 1)
+			err := subMngr.Unsubscribe(ctx, "testtopic")
+
+			require.Error(t, err)
+			require.Equal(t, testError, err)
+		})
+		t.Run("RedisPattern success one value", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			subMngr.listening = true
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			write := []byte("*2\r\n$12\r\nPUNSUBSCRIBE\r\n$6\r\ntest2*\r\n")
+			mockConn.EXPECT().Write(write).Return(len(write), nil)
+
+			subMngr.readChan = make(chan string, 1)
+			res := NewResult(subMngr.conn.r)
+			sub := newSubscription("test2*", 0)
+			msg := newMessage(res, sub.msgChan)
+			msg.topic = []byte("test22")
+			msg.pattern = []byte("test2*")
+			subMngr.chans.Store("test2*", sub)
+			err := subMngr.Unsubscribe(ctx, RedisPattern("test2*"))
+
+			require.Equal(t, "test2*", <-subMngr.readChan)
+			require.NoError(t, err)
+		})
+		t.Run("string success one value", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			subMngr.listening = true
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			write := []byte("*2\r\n$11\r\nUNSUBSCRIBE\r\n$4\r\ntest\r\n")
+			mockConn.EXPECT().Write(write).Return(len(write), nil)
+
+			subMngr.readChan = make(chan string, 1)
+			res := NewResult(subMngr.conn.r)
+			sub := newSubscription("test", 0)
+			msg := newMessage(res, sub.msgChan)
+			msg.topic = []byte("test")
+			subMngr.chans.Store("test", sub)
+			err := subMngr.Unsubscribe(ctx, "test")
+			require.NoError(t, err)
+			val, _ := subMngr.chans.Load("test")
+			require.Nil(t, val)
+		})
+		t.Run("string success multiple values", func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			subMngr := getSubMngr(ctx, ctrl)
+			subMngr.listening = true
+			mockConn := subMngr.conn.conn.(*mock_net.MockConn)
+			write := []byte("*3\r\n$11\r\nUNSUBSCRIBE\r\n$4\r\ntest\r\n$5\r\ntest2\r\n")
+			mockConn.EXPECT().Write(write).Return(len(write), nil)
+
+			subMngr.readChan = make(chan string, 2)
+			err := subMngr.Unsubscribe(ctx, "test", "test2")
+			require.NoError(t, err)
 		})
 	})
 }

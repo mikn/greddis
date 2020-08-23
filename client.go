@@ -133,7 +133,7 @@ func (c *client) Del(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	conn.arrw.Init(2).Add("DEL", key)
+	conn.arrw.Init(2).AddString("DEL", key)
 	err = conn.arrw.Flush()
 	if err != nil {
 		conn.arrw.Reset(conn.conn)
@@ -160,11 +160,13 @@ func (c *client) Publish(ctx context.Context, topic string, value driver.Value) 
 	if err != nil {
 		return 0, err
 	}
-	if err := conn.arrw.Init(3).Add("PUBLISH", topic, value); err != nil {
+	if err := conn.arrw.Init(3).AddString("PUBLISH", topic).Add(value); err != nil {
 		conn.arrw.Reset(conn.conn)
+		c.pool.Put(ctx, conn)
 		return 0, err
 	}
 	if err := conn.arrw.Flush(); err != nil {
+		c.pool.Put(ctx, conn)
 		return 0, err
 	}
 	err = conn.r.Next(ScanInteger)
