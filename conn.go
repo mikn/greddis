@@ -9,26 +9,24 @@ import (
 
 type conn struct {
 	conn        net.Conn
-	cmd         *command
+	arrw        *ArrayWriter
 	res         *Result
-	buf         []byte
-	initBufSize int
+	r           *Reader
 	created     time.Time
 	toBeClosed  int64 // only for use with atomics
 	inUse       int64 // only for use with atomics
 }
 
-func newConn(c net.Conn, bufSize int) *conn {
-	buf := make([]byte, bufSize)
+func newConn(c net.Conn, initBufSize int) *conn {
+	r := NewReader(bufio.NewReaderSize(c, initBufSize))
 	return &conn{
-		conn:        c,
-		buf:         buf,
-		cmd:         &command{bufw: bufio.NewWriter(c)},
-		res:         NewResult(buf),
-		initBufSize: bufSize,
-		created:     time.Now(),
-		toBeClosed:  0,
-		inUse:       0,
+		conn:       c,
+		r:          r,
+		arrw:       NewArrayWriter((bufio.NewWriter(c))),
+		res:        NewResult(r),
+		created:    time.Now(),
+		toBeClosed: 0,
+		inUse:      0,
 	}
 }
 

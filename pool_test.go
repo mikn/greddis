@@ -2,6 +2,7 @@
 package greddis
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"net"
@@ -269,18 +270,14 @@ func TestTrimming(t *testing.T) {
 		var pool, mockConn = testingPool(t)
 		mockConn.EXPECT().SetReadDeadline(gomock.Any()).Times(2)
 		var p1, _ = pool.Get(ctx)
-		var newBuf = make([]byte, 5376)
-		p1.buf = p1.buf[:0]
-		for _, b := range newBuf {
-			p1.buf = append(p1.buf, b)
-		}
+		p1.r.r = bufio.NewReaderSize(p1.r.r, 5376)
 		pool.Put(ctx, p1)
-		require.Equal(t, 5376, cap(p1.buf))
+		require.Equal(t, 5376, p1.r.r.Size())
 		var tick = make(chan time.Time)
 		go connTrimming(ctx, tick, pool)
 		tick <- time.Now()
 		pool.connsMut.Lock()
-		require.Equal(t, pool.targetBufSize, cap(p1.buf))
+		require.Equal(t, pool.targetBufSize, p1.r.r.Size())
 		pool.connsMut.Unlock()
 	})
 }

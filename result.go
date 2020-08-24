@@ -14,15 +14,15 @@ type Scanner interface {
 	Scan(dst interface{}) error
 }
 
-// Result is what is returned from the Redis client if a response is expected
+// Result is what is returned from the Redis client if a single response is expected
 type Result struct {
-	value  []byte
+	r      *Reader
 	finish func()
 }
 
-func NewResult(buf []byte) *Result {
+func NewResult(r *Reader) *Result {
 	return &Result{
-		value:  buf,
+		r:      r,
 		finish: func() {},
 	}
 }
@@ -34,26 +34,31 @@ func NewResult(buf []byte) *Result {
 // productive with it. This implementation can be simpler and forego the source
 // switch since it is custom made for Redis.
 func (r *Result) Scan(dst interface{}) (err error) {
+	err = scan(r.r, dst)
+	r.finish()
+	return err
+}
+
+func scan(r *Reader, dst interface{}) (err error) {
 	switch d := dst.(type) {
 	case *string:
-		*d = string(r.value)
+		*d = string(r.Bytes())
 	case *int:
 		var val int
-		val, err = strconv.Atoi(string(r.value))
+		val, err = strconv.Atoi(r.String())
 		if err == nil {
 			*d = int(val)
 		}
 	case *[]byte:
-		copy(*d, r.value)
+		b := *d
+		*d = b[:r.Len()]
+		copy(*d, r.Bytes())
 	case io.Writer:
-		_, err = d.Write(r.value)
+		_, err = r.WriteTo(d)
 	case Scanner:
-		r.finish()
-		return d.Scan(r.value)
+		err = d.Scan(r.Bytes())
 	default:
-		r.finish()
-		return fmt.Errorf("dst is not of any supported type. Is of type %s", d)
+		err = fmt.Errorf("dst is not of any supported type. Is of type %T", d)
 	}
-	r.finish()
 	return err
 }

@@ -1,6 +1,7 @@
 package greddis
 
 import (
+	"bufio"
 	"context"
 	"math"
 	"net"
@@ -99,8 +100,8 @@ func connTrimming(ctx context.Context, tick <-chan time.Time, pool *pool) {
 			pool.targetBufSize = pool.calcTargetBufSize(pool.bufSizeQuantile, pool.opts.TrimOptions.BufQuantileTarget)
 			// Resize buffers according to targetBufSize
 			for _, conn := range pool.connsRef {
-				if len(conn.buf) != pool.targetBufSize && !conn.getInUse() {
-					conn.buf = make([]byte, pool.targetBufSize)
+				if conn.r.r.Size() > pool.targetBufSize && !conn.getInUse() {
+					conn.r.r = bufio.NewReaderSize(conn.conn, pool.targetBufSize)
 				}
 			}
 			pool.connsMut.Unlock()
@@ -250,7 +251,7 @@ func (p *pool) Put(ctx context.Context, c *conn) {
 		return
 	}
 	c.conn.SetReadDeadline(time.Time{})
-	p.bufSizeQuantile.Observe(float64(cap(c.buf)))
+	p.bufSizeQuantile.Observe(float64(c.r.r.Size()))
 	select {
 	case p.conns <- c:
 	default:

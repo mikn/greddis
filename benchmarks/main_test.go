@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"runtime/debug"
 	"strconv"
 	"syscall"
 	"testing"
@@ -21,9 +20,8 @@ import (
 )
 
 func BenchmarkNetSingleBufIO(b *testing.B) {
-	debug.SetGCPercent(-1)
 	b.ReportAllocs()
-	var c, err = net.Dial("tcp", "172.17.0.2:6379")
+	var c, err = net.Dial("tcp", "localhost:6379")
 	var conn = c.(*net.TCPConn)
 	if err != nil {
 		fmt.Println(err)
@@ -41,8 +39,6 @@ func BenchmarkNetSingleBufIO(b *testing.B) {
 		rw.ReadBytes('\n')
 	}
 	conn.Write([]byte("del testkey\r\n"))
-	debug.FreeOSMemory()
-	debug.SetGCPercent(80)
 }
 
 func testCallBufIO(rw bufio.ReadWriter) string {
@@ -59,7 +55,7 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 	var fd, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
 	var dst = syscall.SockaddrInet4{
 		Port: 6379,
-		Addr: [4]byte{172, 17, 0, 2},
+		Addr: [4]byte{127, 0, 0, 1},
 	}
 	if err != nil {
 		panic(err)
@@ -78,11 +74,12 @@ func BenchmarkSockSingleFunc(b *testing.B) {
 		ret = ret[:]
 	}
 	syscall.Write(fd, []byte("del testkey\r\n"))
+	syscall.Close(fd)
 }
 
 func BenchmarkNetSingleFunc(b *testing.B) {
 	b.ReportAllocs()
-	var conn, err = net.Dial("tcp", "172.17.0.2:6379")
+	var conn, err = net.Dial("tcp", "localhost:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -117,7 +114,7 @@ func testCall(conn net.Conn, bytes []byte) string {
 
 func BenchmarkNetSingle(b *testing.B) {
 	b.ReportAllocs()
-	var conn, err = net.Dial("tcp", "172.17.0.2:6379")
+	var conn, err = net.Dial("tcp", "localhost:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -143,7 +140,7 @@ func BenchmarkNetSingle(b *testing.B) {
 func BenchmarkGreddisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var ctx = context.Background()
-	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://172.17.0.2:6379"})
+	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://localhost:6379"})
 	client.Set(ctx, "testkey", []byte("blahblah"), 0)
 	var buf = &bytes.Buffer{}
 	for i := 0; i < b.N; i++ {
@@ -157,7 +154,7 @@ func BenchmarkGreddisSingle(b *testing.B) {
 func BenchmarkGoRedisSingle(b *testing.B) {
 	b.ReportAllocs()
 	var client = goredis.NewClient(&goredis.Options{
-		Addr: "172.17.0.2:6379",
+		Addr: "localhost:6379",
 	})
 	client.Set("testkey", "blahblah", 0)
 	for i := 0; i < b.N; i++ {
@@ -168,7 +165,7 @@ func BenchmarkGoRedisSingle(b *testing.B) {
 
 func BenchmarkRedigoSingle(b *testing.B) {
 	b.ReportAllocs()
-	var conn, _ = redigo.Dial("tcp", "172.17.0.2:6379")
+	var conn, _ = redigo.Dial("tcp", "localhost:6379")
 	conn.Do("set", "testkey", "blahblah")
 	for i := 0; i < b.N; i++ {
 		var val, err = conn.Do("get", "testkey")
@@ -179,7 +176,7 @@ func BenchmarkRedigoSingle(b *testing.B) {
 func BenchmarkNetChanPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newChanPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newChanPool("tcp", "localhost:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -211,7 +208,7 @@ func BenchmarkNetChanPool(b *testing.B) {
 func BenchmarkNetSyncPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newSyncPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newSyncPool("tcp", "localhost:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -243,7 +240,7 @@ func BenchmarkNetSyncPool(b *testing.B) {
 func BenchmarkNetAtomicPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newAtomicPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newAtomicPool("tcp", "localhost:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -275,7 +272,7 @@ func BenchmarkNetAtomicPool(b *testing.B) {
 func BenchmarkNetSemPool(b *testing.B) {
 	b.ReportAllocs()
 	var s = stats.AddStats(b, 10)
-	var pool = newSemPool("tcp", "172.17.0.2:6379", 10)
+	var pool = newSemPool("tcp", "localhost:6379", 10)
 	var conn, err = pool.Get()
 	if err != nil {
 		fmt.Println(err)
@@ -311,8 +308,8 @@ func BenchmarkNet2Pool(b *testing.B) {
 		MaxActiveConnections: 10,
 		MaxIdleConnections:   10,
 	})
-	pool.Register("tcp", "172.17.0.2:6379")
-	var conn, err = pool.Get("tcp", "172.17.0.2:6379")
+	pool.Register("tcp", "localhost:6379")
+	var conn, err = pool.Get("tcp", "localhost:6379")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -323,7 +320,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 	conn.ReleaseConnection()
 	for i := 0; i < b.N; i++ {
 		var t = time.Now()
-		conn, _ = pool.Get("tcp", "172.17.0.2:6379")
+		conn, _ = pool.Get("tcp", "localhost:6379")
 		bytes = bytes[:0]
 		bytes = append(bytes, "get testkey\r\n"...)
 		conn.Write(bytes)
@@ -335,7 +332,7 @@ func BenchmarkNet2Pool(b *testing.B) {
 		conn.ReleaseConnection()
 		s.Add(time.Now().Sub(t))
 	}
-	conn, _ = pool.Get("tcp", "172.17.0.2:6379")
+	conn, _ = pool.Get("tcp", "localhost:6379")
 	conn.Write([]byte("del testkey\r\n"))
 	conn.ReleaseConnection()
 }
@@ -462,6 +459,83 @@ func redigoSet(addr string, key string, value string) func(*testing.B) {
 	}
 }
 
+func greddisPubSub(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		var ctx = context.Background()
+		client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: fmt.Sprintf("tcp://%s", addr)})
+		subs, err := client.Subscribe(ctx, key)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		var buf = &bytes.Buffer{}
+		var msg *greddis.Message
+		b.ReportAllocs()
+		bValue := []byte(value)
+		for i := 0; i < b.N; i++ {
+			client.Publish(ctx, key, &bValue)
+			msg = <-subs[key]
+			msg.Result.Scan(buf)
+			buf.Reset()
+		}
+		client.Unsubscribe(ctx, key)
+	}
+}
+
+func goredisPubSub(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var client = goredis.NewClient(&goredis.Options{
+			Addr:     addr,
+			PoolSize: 10,
+		})
+		pubsub := client.Subscribe(key)
+
+		// Wait for confirmation that subscription is created before publishing anything.
+		_, err := pubsub.Receive()
+		if err != nil {
+			panic(err)
+		}
+		ch := pubsub.Channel()
+		for i := 0; i < b.N; i++ {
+			client.Publish(key, value).Err()
+			<-ch
+		}
+		pubsub.Close()
+	}
+}
+
+func redigoPubSub(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var pool = redigo.Pool{
+			MaxIdle:   10,
+			MaxActive: 10,
+			Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", addr) },
+		}
+		var conn = pool.Get()
+		psc := redigo.PubSubConn{Conn: conn}
+		psc.Subscribe(key)
+		buf := &bytes.Buffer{}
+		for i := 0; i < b.N; i++ {
+			connPub := pool.Get()
+			connPub.Do("PUBLISH", key, value)
+			switch v := psc.Receive().(type) {
+			case redigo.Message:
+				if v.Channel == key {
+					buf.Write(v.Data)
+				}
+			case error:
+				b.Log(v)
+				b.FailNow()
+			}
+			buf.Reset()
+			connPub.Close()
+		}
+		conn.Close()
+	}
+}
+
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 type testFunc struct {
@@ -479,6 +553,9 @@ func RandStringBytes(n int) string {
 
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
+		testFunc{name: "GoRedisPubSub", f: goredisPubSub},
+		testFunc{name: "RedigoPubSub", f: redigoPubSub},
+		testFunc{name: "GreddisPubSub", f: greddisPubSub},
 		testFunc{name: "GoRedisGet", f: goredisGet},
 		testFunc{name: "GoRedisSet", f: goredisSet},
 		testFunc{name: "RedigoGet", f: redigoGet},
@@ -491,10 +568,30 @@ func BenchmarkDrivers(b *testing.B) {
 		for _, s := range sizes {
 			b.Run(
 				fmt.Sprintf("%s%db", f.name, s),
-				f.f("172.17.0.2:6379", "testkey", RandStringBytes(s)),
+				f.f("localhost:6379", "testkey", RandStringBytes(s)),
 			)
 		}
 	}
+}
+
+func BenchmarkGreddisPubSub(b *testing.B) {
+	b.ReportAllocs()
+	var ctx = context.Background()
+	client, _ := greddis.NewClient(ctx, &greddis.PoolOptions{URL: "tcp://localhost:6379"})
+	subs, err := client.Subscribe(ctx, "testtopic")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	var buf = &bytes.Buffer{}
+	var msg *greddis.Message
+	for i := 0; i < b.N; i++ {
+		client.Publish(ctx, "testtopic", "hellotest")
+		msg = <-subs["testtopic"]
+		msg.Result.Scan(buf)
+		buf.Reset()
+	}
+	client.Unsubscribe(ctx, "testtopic")
 }
 
 //func TestMain(m *testing.M) {
