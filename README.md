@@ -7,7 +7,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mikn/greddis)](https://goreportcard.com/report/github.com/mikn/greddis)
 [![Go doc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://godoc.org/github.com/mikn/greddis)
 
-**Note**: Currently Greddis only implements Del/Set/Get and is more of a proof of concept than a fully implemented client.
+**Note**: Currently Greddis only implements Pub/Sub/Del/Set/Get and is more of a proof of concept than a fully implemented client as of now.
 
 Greddis focus is high performance and letting the user of the library control its allocations. It is built using learnings from `database/sql/driver` implementations in the standard package. Many implementations of these interfaces provide consistent and high performance through good use of buffer pools, as well as the connection pool implementation in the standard library itself.
 
