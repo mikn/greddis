@@ -14,7 +14,7 @@ Greddis focus is high performance and letting the user of the library control it
 Furthermore, it is compatible with any implementation of Valuer/Scanner from `database/sql` as long as they have a `[]byte` implementation (as all data returned from Redis is `[]byte`).
 
 ## Roadmap
- - [ ] Pub/sub commands
+ - [x] Pub/sub commands
  - [ ] Sentinel support
  - [ ] Set commands
  - [ ] List commands
@@ -73,7 +73,7 @@ According to the Redis Serialization Protocol ([RESP Specification](https://redi
 | Redigo  | No  |
 | GoRedis | No  |
 
-Neither **Redigo** nor **GoRedis** pools its buffers for reuse and allocates them on the stack per request. This becomes rather heavy on performance, especially as response sizes grow. You can see in the Get benchmarks for the three clients that **GoRedis** allocates the result no less than three times on the stack and **Redigo** allocates once. (Reference, *Get5000b* benchmark)
+Neither **Redigo** nor **GoRedis** pools its buffers for reuse and allocates them on the stack per request. This becomes rather heavy on performance, especially as response sizes grow. You can see in the Get benchmarks for the three clients that **GoRedis** allocates the result no less than three times on the stack and **Redigo** allocates once. (Reference, *Get10000b* benchmark)
 
 ### Allows for zero-copy parsing of response?
 
@@ -108,30 +108,42 @@ BenchmarkNet2Pool-8         	   77632	     16344 ns/op	     312 B/op	       5 al
 
 ```
 After having picked the most efficient (using a channel for the pool) this was picked for implementation in Greddis. It was also the only one with zero allocs, so yay!
-The benchmarks following is comparing Redigo, GoRedis and Greddis at different object sizes and set vs get.
+The benchmarks following is comparing Redigo, GoRedis and Greddis at different object sizes doing pubsub, set and get.
 ```
-BenchmarkDrivers/GoRedisGet1000b-8            	   58658	     19544 ns/op	    3348 B/op	      15 allocs/op
-BenchmarkDrivers/GoRedisGet10000b-8           	   37968	     30297 ns/op	   31183 B/op	      15 allocs/op
-BenchmarkDrivers/GoRedisGet100000b-8          	    9896	    107055 ns/op	  426657 B/op	      18 allocs/op
-BenchmarkDrivers/GoRedisGet10000000b-8        	     133	   8670924 ns/op	40011402 B/op	      21 allocs/op
-BenchmarkDrivers/GoRedisSet1000b-8            	   62616	     16747 ns/op	     226 B/op	       7 allocs/op
-BenchmarkDrivers/GoRedisSet10000b-8           	   48716	     22454 ns/op	     226 B/op	       7 allocs/op
-BenchmarkDrivers/GoRedisSet100000b-8          	   28116	     44005 ns/op	     226 B/op	       7 allocs/op
-BenchmarkDrivers/GoRedisSet10000000b-8        	     268	   5058103 ns/op	     295 B/op	       7 allocs/op
-BenchmarkDrivers/RedigoGet1000b-8             	   60531	     18122 ns/op	    1220 B/op	       9 allocs/op
-BenchmarkDrivers/RedigoGet10000b-8            	   50144	     23930 ns/op	   10443 B/op	       9 allocs/op
-BenchmarkDrivers/RedigoGet100000b-8           	   22052	     54568 ns/op	  106763 B/op	       9 allocs/op
-BenchmarkDrivers/RedigoGet10000000b-8         	     216	   5276562 ns/op	10003173 B/op	      11 allocs/op
-BenchmarkDrivers/RedigoSet1000b-8             	   73778	     15420 ns/op	      99 B/op	       5 allocs/op
-BenchmarkDrivers/RedigoSet10000b-8            	   50972	     20916 ns/op	      99 B/op	       5 allocs/op
-BenchmarkDrivers/RedigoSet100000b-8           	   14211	     81108 ns/op	     100 B/op	       5 allocs/op
-BenchmarkDrivers/RedigoSet10000000b-8         	     160	   7026298 ns/op	     199 B/op	       5 allocs/op
-BenchmarkDrivers/GreddisGet1000b-8            	   77120	     14601 ns/op	       1 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisGet10000b-8           	   62682	     17343 ns/op	       2 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisGet100000b-8          	   33244	     36478 ns/op	      13 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisGet10000000b-8        	     223	   5075880 ns/op	  195472 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisSet1000b-8            	   69918	     15120 ns/op	       1 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisSet10000b-8           	   56565	     21364 ns/op	       1 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisSet100000b-8          	   27297	     43287 ns/op	       3 B/op	       0 allocs/op
-BenchmarkDrivers/GreddisSet10000000b-8        	     226	   5300613 ns/op	     175 B/op	       1 allocs/op
+BenchmarkDrivers/GoRedisPubSub1000b-8         	   50485	     22692 ns/op	    1520 B/op	      20 allocs/op
+BenchmarkDrivers/GoRedisPubSub10000b-8        	   38638	     31074 ns/op	   10736 B/op	      20 allocs/op
+BenchmarkDrivers/GoRedisPubSub100000b-8       	   17682	     67689 ns/op	  106993 B/op	      20 allocs/op
+BenchmarkDrivers/GoRedisPubSub10000000b-8     	     150	   7995486 ns/op	10003132 B/op	      21 allocs/op
+BenchmarkDrivers/RedigoPubSub1000b-8          	   71019	     16286 ns/op	    1480 B/op	      18 allocs/op
+BenchmarkDrivers/RedigoPubSub10000b-8         	   43623	     25570 ns/op	   10696 B/op	      18 allocs/op
+BenchmarkDrivers/RedigoPubSub100000b-8        	    9266	    109194 ns/op	  106966 B/op	      18 allocs/op
+BenchmarkDrivers/RedigoPubSub10000000b-8      	     100	  12289723 ns/op	10103156 B/op	      19 allocs/op
+BenchmarkDrivers/GreddisPubSub1000b-8         	   54388	     19923 ns/op	       2 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisPubSub10000b-8        	   41598	     27145 ns/op	       4 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisPubSub100000b-8       	   20304	     58576 ns/op	      25 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisPubSub10000000b-8     	     166	   7100689 ns/op	  262974 B/op	       2 allocs/op
+BenchmarkDrivers/GoRedisGet1000b-8            	   72638	     15873 ns/op	    3348 B/op	      15 allocs/op
+BenchmarkDrivers/GoRedisGet10000b-8           	   52407	     22818 ns/op	   31222 B/op	      15 allocs/op
+BenchmarkDrivers/GoRedisGet100000b-8          	   12256	    126058 ns/op	  426675 B/op	      18 allocs/op
+BenchmarkDrivers/GoRedisGet10000000b-8        	     148	   7967071 ns/op	40011394 B/op	      21 allocs/op
+BenchmarkDrivers/GoRedisSet1000b-8            	   64404	     17622 ns/op	     226 B/op	       7 allocs/op
+BenchmarkDrivers/GoRedisSet10000b-8           	   50204	     24055 ns/op	     226 B/op	       7 allocs/op
+BenchmarkDrivers/GoRedisSet100000b-8          	   26132	     47400 ns/op	     226 B/op	       7 allocs/op
+BenchmarkDrivers/GoRedisSet10000000b-8        	     332	   4064425 ns/op	     282 B/op	       7 allocs/op
+BenchmarkDrivers/RedigoGet1000b-8             	   69430	     18184 ns/op	    1220 B/op	       9 allocs/op
+BenchmarkDrivers/RedigoGet10000b-8            	   49509	     24123 ns/op	   10443 B/op	       9 allocs/op
+BenchmarkDrivers/RedigoGet100000b-8           	   21214	     59771 ns/op	  106758 B/op	       9 allocs/op
+BenchmarkDrivers/RedigoGet10000000b-8         	     288	   4908264 ns/op	10003177 B/op	      11 allocs/op
+BenchmarkDrivers/RedigoSet1000b-8             	   70467	     16785 ns/op	      99 B/op	       5 allocs/op
+BenchmarkDrivers/RedigoSet10000b-8            	   51565	     22755 ns/op	      99 B/op	       5 allocs/op
+BenchmarkDrivers/RedigoSet100000b-8           	   12538	     98983 ns/op	     100 B/op	       5 allocs/op
+BenchmarkDrivers/RedigoSet10000000b-8         	     138	   8812137 ns/op	     216 B/op	       5 allocs/op
+BenchmarkDrivers/GreddisGet1000b-8            	   68478	     17082 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisGet10000b-8           	   65054	     19505 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisGet100000b-8          	   30398	     39965 ns/op	      14 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisGet10000000b-8        	     276	   4067938 ns/op	  157934 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet1000b-8            	   69969	     16474 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet10000b-8           	   47844	     23079 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet100000b-8          	   25050	     47438 ns/op	       3 B/op	       0 allocs/op
+BenchmarkDrivers/GreddisSet10000000b-8        	     340	   4707750 ns/op	     129 B/op	       0 allocs/op
 ```

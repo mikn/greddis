@@ -471,13 +471,68 @@ func greddisPubSub(addr string, key string, value string) func(*testing.B) {
 		var buf = &bytes.Buffer{}
 		var msg *greddis.Message
 		b.ReportAllocs()
+		bValue := []byte(value)
 		for i := 0; i < b.N; i++ {
-			client.Publish(ctx, key, &value)
+			client.Publish(ctx, key, &bValue)
 			msg = <-subs[key]
 			msg.Result.Scan(buf)
 			buf.Reset()
 		}
 		client.Unsubscribe(ctx, key)
+	}
+}
+
+func goredisPubSub(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var client = goredis.NewClient(&goredis.Options{
+			Addr:     addr,
+			PoolSize: 10,
+		})
+		pubsub := client.Subscribe(key)
+
+		// Wait for confirmation that subscription is created before publishing anything.
+		_, err := pubsub.Receive()
+		if err != nil {
+			panic(err)
+		}
+		ch := pubsub.Channel()
+		for i := 0; i < b.N; i++ {
+			client.Publish(key, value).Err()
+			<-ch
+		}
+		pubsub.Close()
+	}
+}
+
+func redigoPubSub(addr string, key string, value string) func(*testing.B) {
+	return func(b *testing.B) {
+		b.ReportAllocs()
+		var pool = redigo.Pool{
+			MaxIdle:   10,
+			MaxActive: 10,
+			Dial:      func() (redigo.Conn, error) { return redigo.Dial("tcp", addr) },
+		}
+		var conn = pool.Get()
+		psc := redigo.PubSubConn{Conn: conn}
+		psc.Subscribe(key)
+		buf := &bytes.Buffer{}
+		for i := 0; i < b.N; i++ {
+			connPub := pool.Get()
+			connPub.Do("PUBLISH", key, value)
+			switch v := psc.Receive().(type) {
+			case redigo.Message:
+				if v.Channel == key {
+					buf.Write(v.Data)
+				}
+			case error:
+				b.Log(v)
+				b.FailNow()
+			}
+			buf.Reset()
+			connPub.Close()
+		}
+		conn.Close()
 	}
 }
 
@@ -498,6 +553,8 @@ func RandStringBytes(n int) string {
 
 func BenchmarkDrivers(b *testing.B) {
 	var funcs = []testFunc{
+		testFunc{name: "GoRedisPubSub", f: goredisPubSub},
+		testFunc{name: "RedigoPubSub", f: redigoPubSub},
 		testFunc{name: "GreddisPubSub", f: greddisPubSub},
 		testFunc{name: "GoRedisGet", f: goredisGet},
 		testFunc{name: "GoRedisSet", f: goredisSet},

@@ -192,6 +192,7 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 					log.Printf("Error: %s", err)
 				}
 			}
+			errs = errs[:0]
 			if encounteredErr {
 				// TODO we should be trying to close the connection sanely here?
 				return
