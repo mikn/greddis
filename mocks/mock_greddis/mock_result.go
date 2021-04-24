@@ -5,34 +5,35 @@
 package mock_greddis
 
 import (
-	gomock "github.com/golang/mock/gomock"
 	reflect "reflect"
+
+	gomock "github.com/golang/mock/gomock"
 )
 
-// MockScanner is a mock of Scanner interface
+// MockScanner is a mock of Scanner interface.
 type MockScanner struct {
 	ctrl     *gomock.Controller
 	recorder *MockScannerMockRecorder
 }
 
-// MockScannerMockRecorder is the mock recorder for MockScanner
+// MockScannerMockRecorder is the mock recorder for MockScanner.
 type MockScannerMockRecorder struct {
 	mock *MockScanner
 }
 
-// NewMockScanner creates a new mock instance
+// NewMockScanner creates a new mock instance.
 func NewMockScanner(ctrl *gomock.Controller) *MockScanner {
 	mock := &MockScanner{ctrl: ctrl}
 	mock.recorder = &MockScannerMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockScanner) EXPECT() *MockScannerMockRecorder {
 	return m.recorder
 }
 
-// Scan mocks base method
+// Scan mocks base method.
 func (m *MockScanner) Scan(dst interface{}) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Scan", dst)
@@ -40,7 +41,7 @@ func (m *MockScanner) Scan(dst interface{}) error {
 	return ret0
 }
 
-// Scan indicates an expected call of Scan
+// Scan indicates an expected call of Scan.
 func (mr *MockScannerMockRecorder) Scan(dst interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Scan", reflect.TypeOf((*MockScanner)(nil).Scan), dst)

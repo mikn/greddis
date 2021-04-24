@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mocks/mock_net/mock_error.go net Error
 package greddis
 
 import (
