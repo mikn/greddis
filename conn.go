@@ -8,13 +8,13 @@ import (
 )
 
 type conn struct {
-	conn        net.Conn
-	arrw        *ArrayWriter
-	res         *Result
-	r           *Reader
-	created     time.Time
-	toBeClosed  int64 // only for use with atomics
-	inUse       int64 // only for use with atomics
+	conn       net.Conn
+	arrw       *ArrayWriter
+	res        *Result
+	r          *Reader
+	created    time.Time
+	toBeClosed int64 // only for use with atomics
+	inUse      int64 // only for use with atomics
 }
 
 func newConn(c net.Conn, initBufSize int) *conn {
