@@ -45,6 +45,7 @@ func scan(r *Reader, dst interface{}) (err error) {
 		*d = string(r.Bytes())
 	case *int:
 		var val int
+		// TODO switch to use r.Int() once error is being returned
 		val, err = strconv.Atoi(r.String())
 		if err == nil {
 			*d = int(val)

@@ -28,6 +28,8 @@ type Reader struct {
 	intToken int
 }
 
+// TODO Do not hide the potential error from Peek, make sure it is properly propagated
+// TODO propagate error from Atoi() in Int() call
 func NewReader(r *bufio.Reader) *Reader {
 	return &Reader{
 		r:      r,
