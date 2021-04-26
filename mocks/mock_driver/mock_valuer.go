@@ -6,34 +6,35 @@ package mock_driver
 
 import (
 	driver "database/sql/driver"
-	gomock "github.com/golang/mock/gomock"
 	reflect "reflect"
+
+	gomock "github.com/golang/mock/gomock"
 )
 
-// MockValuer is a mock of Valuer interface
+// MockValuer is a mock of Valuer interface.
 type MockValuer struct {
 	ctrl     *gomock.Controller
 	recorder *MockValuerMockRecorder
 }
 
-// MockValuerMockRecorder is the mock recorder for MockValuer
+// MockValuerMockRecorder is the mock recorder for MockValuer.
 type MockValuerMockRecorder struct {
 	mock *MockValuer
 }
 
-// NewMockValuer creates a new mock instance
+// NewMockValuer creates a new mock instance.
 func NewMockValuer(ctrl *gomock.Controller) *MockValuer {
 	mock := &MockValuer{ctrl: ctrl}
 	mock.recorder = &MockValuerMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockValuer) EXPECT() *MockValuerMockRecorder {
 	return m.recorder
 }
 
-// Value mocks base method
+// Value mocks base method.
 func (m *MockValuer) Value() (driver.Value, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Value")
@@ -42,7 +43,7 @@ func (m *MockValuer) Value() (driver.Value, error) {
 	return ret0, ret1
 }
 
-// Value indicates an expected call of Value
+// Value indicates an expected call of Value.
 func (mr *MockValuerMockRecorder) Value() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Value", reflect.TypeOf((*MockValuer)(nil).Value))

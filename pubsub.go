@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net"
+	"os"
 	"sync"
 	"time"
 	"unsafe"
@@ -19,11 +19,6 @@ const (
 	subPattern
 )
 
-// I can't really have more than one message per connection "active" at a time
-// because the reader, the result etc are all tied to the connection (and we should really not
-// be advancing the reader in another thread) - so the idea here with the pool and stuff
-// is pretty stupid. I should add the message to the subscription manager and listen for it
-// on the channel at the top of every loop of Listen()
 type Message struct {
 	Ctx     context.Context
 	pattern []byte
@@ -143,8 +138,7 @@ func (s *subscriptionManager) Listen(ctx context.Context, c *conn) {
 			m.Init()
 			c.conn.SetReadDeadline(time.Now().Add(s.opts.PingInterval))
 			err = array.Init(ScanBulkString)
-			// TODO when 1.15 is out, change this to this: https://github.com/golang/go/issues/31449
-			if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
 				c.conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout))
 				if err := ping(ctx, c); err != nil {
 					log.Printf("Ping error: %s", err)

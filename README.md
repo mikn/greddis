@@ -74,7 +74,7 @@ According to the Redis Serialization Protocol ([RESP Specification](https://redi
 | Redigo  | No  |
 | GoRedis | No  |
 
-Neither **Redigo** nor **GoRedis** pools its buffers for reuse and allocates them on the stack per request. This becomes rather heavy on performance, especially as response sizes grow. You can see in the Get benchmarks for the three clients that **GoRedis** allocates the result no less than three times on the stack and **Redigo** allocates once. (Reference, *Get10000b* benchmark)
+Neither **Redigo** nor **GoRedis** pools its buffers for reuse and allocates them on the heap per request. This becomes rather heavy on performance, especially as response sizes grow. You can see in the Get benchmarks for the three clients that **GoRedis** allocates the result no less than three times on the heap and **Redigo** allocates once. (Reference, *Get10000b* benchmark)
 
 ### Allows for zero-copy parsing of response?
 

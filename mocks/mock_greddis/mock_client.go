@@ -7,35 +7,36 @@ package mock_greddis
 import (
 	context "context"
 	driver "database/sql/driver"
+	reflect "reflect"
+
 	gomock "github.com/golang/mock/gomock"
 	greddis "github.com/mikn/greddis"
-	reflect "reflect"
 )
 
-// MockSubscriber is a mock of Subscriber interface
+// MockSubscriber is a mock of Subscriber interface.
 type MockSubscriber struct {
 	ctrl     *gomock.Controller
 	recorder *MockSubscriberMockRecorder
 }
 
-// MockSubscriberMockRecorder is the mock recorder for MockSubscriber
+// MockSubscriberMockRecorder is the mock recorder for MockSubscriber.
 type MockSubscriberMockRecorder struct {
 	mock *MockSubscriber
 }
 
-// NewMockSubscriber creates a new mock instance
+// NewMockSubscriber creates a new mock instance.
 func NewMockSubscriber(ctrl *gomock.Controller) *MockSubscriber {
 	mock := &MockSubscriber{ctrl: ctrl}
 	mock.recorder = &MockSubscriberMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockSubscriber) EXPECT() *MockSubscriberMockRecorder {
 	return m.recorder
 }
 
-// Subscribe mocks base method
+// Subscribe mocks base method.
 func (m *MockSubscriber) Subscribe(ctx context.Context, topics ...interface{}) (greddis.MessageChanMap, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx}
@@ -48,14 +49,14 @@ func (m *MockSubscriber) Subscribe(ctx context.Context, topics ...interface{}) (
 	return ret0, ret1
 }
 
-// Subscribe indicates an expected call of Subscribe
+// Subscribe indicates an expected call of Subscribe.
 func (mr *MockSubscriberMockRecorder) Subscribe(ctx interface{}, topics ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{ctx}, topics...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockSubscriber)(nil).Subscribe), varargs...)
 }
 
-// Unsubscribe mocks base method
+// Unsubscribe mocks base method.
 func (m *MockSubscriber) Unsubscribe(ctx context.Context, topics ...interface{}) error {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx}
@@ -67,37 +68,51 @@ func (m *MockSubscriber) Unsubscribe(ctx context.Context, topics ...interface{})
 	return ret0
 }
 
-// Unsubscribe indicates an expected call of Unsubscribe
+// Unsubscribe indicates an expected call of Unsubscribe.
 func (mr *MockSubscriberMockRecorder) Unsubscribe(ctx interface{}, topics ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{ctx}, topics...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unsubscribe", reflect.TypeOf((*MockSubscriber)(nil).Unsubscribe), varargs...)
 }
 
-// MockClient is a mock of Client interface
+// MockClient is a mock of Client interface.
 type MockClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockClientMockRecorder
 }
 
-// MockClientMockRecorder is the mock recorder for MockClient
+// MockClientMockRecorder is the mock recorder for MockClient.
 type MockClientMockRecorder struct {
 	mock *MockClient
 }
 
-// NewMockClient creates a new mock instance
+// NewMockClient creates a new mock instance.
 func NewMockClient(ctrl *gomock.Controller) *MockClient {
 	mock := &MockClient{ctrl: ctrl}
 	mock.recorder = &MockClientMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
-// Get mocks base method
+// Del mocks base method.
+func (m *MockClient) Del(ctx context.Context, key string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Del", ctx, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Del indicates an expected call of Del.
+func (mr *MockClientMockRecorder) Del(ctx, key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockClient)(nil).Del), ctx, key)
+}
+
+// Get mocks base method.
 func (m *MockClient) Get(ctx context.Context, key string) (*greddis.Result, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", ctx, key)
@@ -106,41 +121,13 @@ func (m *MockClient) Get(ctx context.Context, key string) (*greddis.Result, erro
 	return ret0, ret1
 }
 
-// Get indicates an expected call of Get
+// Get indicates an expected call of Get.
 func (mr *MockClientMockRecorder) Get(ctx, key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockClient)(nil).Get), ctx, key)
 }
 
-// Set mocks base method
-func (m *MockClient) Set(ctx context.Context, key string, value driver.Value, ttl int) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Set", ctx, key, value, ttl)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Set indicates an expected call of Set
-func (mr *MockClientMockRecorder) Set(ctx, key, value, ttl interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockClient)(nil).Set), ctx, key, value, ttl)
-}
-
-// Del mocks base method
-func (m *MockClient) Del(ctx context.Context, key string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Del", ctx, key)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Del indicates an expected call of Del
-func (mr *MockClientMockRecorder) Del(ctx, key interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockClient)(nil).Del), ctx, key)
-}
-
-// Ping mocks base method
+// Ping mocks base method.
 func (m *MockClient) Ping(ctx context.Context) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ping", ctx)
@@ -148,13 +135,13 @@ func (m *MockClient) Ping(ctx context.Context) error {
 	return ret0
 }
 
-// Ping indicates an expected call of Ping
+// Ping indicates an expected call of Ping.
 func (mr *MockClientMockRecorder) Ping(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockClient)(nil).Ping), ctx)
 }
 
-// Publish mocks base method
+// Publish mocks base method.
 func (m *MockClient) Publish(ctx context.Context, topic string, message driver.Value) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Publish", ctx, topic, message)
@@ -163,36 +150,122 @@ func (m *MockClient) Publish(ctx context.Context, topic string, message driver.V
 	return ret0, ret1
 }
 
-// Publish indicates an expected call of Publish
+// Publish indicates an expected call of Publish.
 func (mr *MockClientMockRecorder) Publish(ctx, topic, message interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockClient)(nil).Publish), ctx, topic, message)
 }
 
-// MockSubClient is a mock of SubClient interface
+// Set mocks base method.
+func (m *MockClient) Set(ctx context.Context, key string, value driver.Value, ttl int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Set", ctx, key, value, ttl)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Set indicates an expected call of Set.
+func (mr *MockClientMockRecorder) Set(ctx, key, value, ttl interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockClient)(nil).Set), ctx, key, value, ttl)
+}
+
+// MockSubClient is a mock of SubClient interface.
 type MockSubClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockSubClientMockRecorder
 }
 
-// MockSubClientMockRecorder is the mock recorder for MockSubClient
+// MockSubClientMockRecorder is the mock recorder for MockSubClient.
 type MockSubClientMockRecorder struct {
 	mock *MockSubClient
 }
 
-// NewMockSubClient creates a new mock instance
+// NewMockSubClient creates a new mock instance.
 func NewMockSubClient(ctrl *gomock.Controller) *MockSubClient {
 	mock := &MockSubClient{ctrl: ctrl}
 	mock.recorder = &MockSubClientMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockSubClient) EXPECT() *MockSubClientMockRecorder {
 	return m.recorder
 }
 
-// Subscribe mocks base method
+// Del mocks base method.
+func (m *MockSubClient) Del(ctx context.Context, key string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Del", ctx, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Del indicates an expected call of Del.
+func (mr *MockSubClientMockRecorder) Del(ctx, key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockSubClient)(nil).Del), ctx, key)
+}
+
+// Get mocks base method.
+func (m *MockSubClient) Get(ctx context.Context, key string) (*greddis.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, key)
+	ret0, _ := ret[0].(*greddis.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockSubClientMockRecorder) Get(ctx, key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockSubClient)(nil).Get), ctx, key)
+}
+
+// Ping mocks base method.
+func (m *MockSubClient) Ping(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Ping", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Ping indicates an expected call of Ping.
+func (mr *MockSubClientMockRecorder) Ping(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockSubClient)(nil).Ping), ctx)
+}
+
+// Publish mocks base method.
+func (m *MockSubClient) Publish(ctx context.Context, topic string, message driver.Value) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Publish", ctx, topic, message)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Publish indicates an expected call of Publish.
+func (mr *MockSubClientMockRecorder) Publish(ctx, topic, message interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockSubClient)(nil).Publish), ctx, topic, message)
+}
+
+// Set mocks base method.
+func (m *MockSubClient) Set(ctx context.Context, key string, value driver.Value, ttl int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Set", ctx, key, value, ttl)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Set indicates an expected call of Set.
+func (mr *MockSubClientMockRecorder) Set(ctx, key, value, ttl interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockSubClient)(nil).Set), ctx, key, value, ttl)
+}
+
+// Subscribe mocks base method.
 func (m *MockSubClient) Subscribe(ctx context.Context, topics ...interface{}) (greddis.MessageChanMap, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx}
@@ -205,14 +278,14 @@ func (m *MockSubClient) Subscribe(ctx context.Context, topics ...interface{}) (g
 	return ret0, ret1
 }
 
-// Subscribe indicates an expected call of Subscribe
+// Subscribe indicates an expected call of Subscribe.
 func (mr *MockSubClientMockRecorder) Subscribe(ctx interface{}, topics ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{ctx}, topics...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockSubClient)(nil).Subscribe), varargs...)
 }
 
-// Unsubscribe mocks base method
+// Unsubscribe mocks base method.
 func (m *MockSubClient) Unsubscribe(ctx context.Context, topics ...interface{}) error {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx}
@@ -224,81 +297,9 @@ func (m *MockSubClient) Unsubscribe(ctx context.Context, topics ...interface{}) 
 	return ret0
 }
 
-// Unsubscribe indicates an expected call of Unsubscribe
+// Unsubscribe indicates an expected call of Unsubscribe.
 func (mr *MockSubClientMockRecorder) Unsubscribe(ctx interface{}, topics ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{ctx}, topics...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unsubscribe", reflect.TypeOf((*MockSubClient)(nil).Unsubscribe), varargs...)
-}
-
-// Get mocks base method
-func (m *MockSubClient) Get(ctx context.Context, key string) (*greddis.Result, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, key)
-	ret0, _ := ret[0].(*greddis.Result)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Get indicates an expected call of Get
-func (mr *MockSubClientMockRecorder) Get(ctx, key interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockSubClient)(nil).Get), ctx, key)
-}
-
-// Set mocks base method
-func (m *MockSubClient) Set(ctx context.Context, key string, value driver.Value, ttl int) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Set", ctx, key, value, ttl)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Set indicates an expected call of Set
-func (mr *MockSubClientMockRecorder) Set(ctx, key, value, ttl interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockSubClient)(nil).Set), ctx, key, value, ttl)
-}
-
-// Del mocks base method
-func (m *MockSubClient) Del(ctx context.Context, key string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Del", ctx, key)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Del indicates an expected call of Del
-func (mr *MockSubClientMockRecorder) Del(ctx, key interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockSubClient)(nil).Del), ctx, key)
-}
-
-// Ping mocks base method
-func (m *MockSubClient) Ping(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Ping", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Ping indicates an expected call of Ping
-func (mr *MockSubClientMockRecorder) Ping(ctx interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockSubClient)(nil).Ping), ctx)
-}
-
-// Publish mocks base method
-func (m *MockSubClient) Publish(ctx context.Context, topic string, message driver.Value) (int, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Publish", ctx, topic, message)
-	ret0, _ := ret[0].(int)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Publish indicates an expected call of Publish
-func (mr *MockSubClientMockRecorder) Publish(ctx, topic, message interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockSubClient)(nil).Publish), ctx, topic, message)
 }
